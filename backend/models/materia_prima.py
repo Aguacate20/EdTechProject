@@ -46,19 +46,37 @@ class ExtractionConfidence(str, Enum):
 # Capa 1 — Diccionario conceptual
 # ─────────────────────────────────────────────
 
+class ConceptDimension(BaseModel):
+    name: str
+    description: str
+
+class ConceptDistinction(BaseModel):
+    from_concept: str
+    difference: str
+
 class Concept(BaseModel):
     """Nodo del grafo conceptual del curso."""
-    id: str = Field(..., description="slug único, ej: 'falsa_creencia'")
+    id: str
     title: str
-    definition: str = Field(..., description="Definición técnica desde el corpus")
+    definition: str
     tipo: ConceptType
     difficulty: DifficultyLevel
-    importance: float = Field(..., ge=0, le=1, description="Centralidad en el grafo (0-1)")
-    is_gateway: bool = Field(False, description="Desbloquea comprensión de otros conceptos")
-    is_threshold: bool = Field(False, description="Cambia la forma de pensar al comprenderlo")
+    importance: float = Field(..., ge=0, le=1)
+    is_gateway: bool = False
+    is_threshold: bool = False
     source_pages: list[int] = Field(default_factory=list)
     source_section: Optional[str] = None
     confidence_extraction: ExtractionConfidence = ExtractionConfidence.MEDIA
+
+    # Campos enriquecidos (se llenan en Paso 2.5)
+    core_definition: Optional[str] = None
+    subdimensions: list[ConceptDimension] = Field(default_factory=list)
+    distinctions: list[ConceptDistinction] = Field(default_factory=list)
+    measurement_approach: Optional[str] = None
+    theoretical_role: Optional[str] = None
+    key_tensions: list[str] = Field(default_factory=list)
+    evolution_in_paper: Optional[str] = None
+    is_enriched: bool = False
 
 
 # ─────────────────────────────────────────────
