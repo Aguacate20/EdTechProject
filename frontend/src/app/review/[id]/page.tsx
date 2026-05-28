@@ -15,6 +15,15 @@ interface Concept {
   is_threshold: boolean;
   confidence_extraction: "alta" | "media" | "baja";
   source_pages: number[];
+  // Enriquecidos
+  is_enriched?: boolean;
+  core_definition?: string;
+  subdimensions?: { name: string; description: string }[];
+  distinctions?: { from_concept: string; difference: string }[];
+  measurement_approach?: string;
+  theoretical_role?: string;
+  key_tensions?: string[];
+  evolution_in_paper?: string;
 }
 
 interface Relation {
