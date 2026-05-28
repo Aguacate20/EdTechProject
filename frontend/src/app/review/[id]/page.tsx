@@ -96,6 +96,22 @@ export default function ReviewPage() {
         const res = await fetch(`${backendUrl}/jobs/${id}`);
         const data = await res.json();
         setJob(data);
+  
+        // Auto-aprobar elementos de confianza alta
+        const initial: Record<string, ReviewState> = {};
+        if (data.result) {
+          data.result.concepts.forEach((c: Concept) => {
+            if (c.confidence_extraction === "alta") initial[c.id] = "approved";
+          });
+          data.result.relations.forEach((r: Relation, i: number) => {
+            if (r.confidence_extraction === "alta") initial[`rel_${i}`] = "approved";
+          });
+          data.result.repertoires.forEach((r: Repertoire) => {
+            if (r.confidence_extraction === "alta") initial[r.id] = "approved";
+          });
+        }
+        setReviews(initial);
+  
       } catch {
         // silenciar
       } finally {
