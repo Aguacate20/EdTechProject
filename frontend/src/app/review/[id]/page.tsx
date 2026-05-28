@@ -305,28 +305,32 @@ function ConceptCard({ concept, review, onReview }: {
   review?: ReviewState;
   onReview: (s: ReviewState) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
-    <div className={`rounded-xl border p-4 transition-all ${
+    <div className={`rounded-xl border transition-all ${
       review === "approved" ? "border-green-500/30 bg-green-500/5" :
       review === "rejected" ? "border-red-500/30 bg-red-500/5 opacity-50" :
       "border-gray-800 bg-gray-900/50"
     }`}>
-      <div className="flex items-start justify-between gap-4">
+      {/* Header siempre visible */}
+      <div className="flex items-start justify-between gap-4 p-4">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <h3 className="font-medium">{concept.title}</h3>
             {concept.is_gateway && (
-              <span className="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full">
-                puerta
-              </span>
+              <span className="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full">puerta</span>
             )}
             {concept.is_threshold && (
-              <span className="text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-full">
-                umbral
-              </span>
+              <span className="text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-full">umbral</span>
+            )}
+            {concept.is_enriched && (
+              <span className="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">enriquecido</span>
             )}
           </div>
-          <p className="text-sm text-gray-400 mb-3">{concept.definition}</p>
+          <p className="text-sm text-gray-400 mb-2">
+            {concept.core_definition ?? concept.definition}
+          </p>
           <div className="flex items-center gap-3 text-xs">
             <span className={DIFFICULTY_COLORS[concept.difficulty as keyof typeof DIFFICULTY_COLORS] ?? "text-gray-400"}>
               {concept.difficulty}
@@ -334,10 +338,8 @@ function ConceptCard({ concept, review, onReview }: {
             <span className="text-gray-600">·</span>
             <span className="text-gray-500">{concept.tipo}</span>
             <span className="text-gray-600">·</span>
-            <span className="text-gray-500">
-              importancia {Math.round(concept.importance * 100)}%
-            </span>
-            {concept.source_pages.length > 0 && (
+            <span className="text-gray-500">importancia {Math.round(concept.importance * 100)}%</span>
+            {concept.source_pages?.length > 0 && (
               <>
                 <span className="text-gray-600">·</span>
                 <span className="text-gray-500">p. {concept.source_pages.join(", ")}</span>
@@ -350,8 +352,86 @@ function ConceptCard({ concept, review, onReview }: {
             {concept.confidence_extraction}
           </span>
           <ReviewButtons review={review} onReview={onReview} />
+          {concept.is_enriched && (
+            <button
+              onClick={() => setExpanded(e => !e)}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors mt-1"
+            >
+              {expanded ? "▲ menos" : "▼ más"}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Detalle expandido */}
+      {expanded && concept.is_enriched && (
+        <div className="border-t border-gray-800 p-4 space-y-4">
+
+          {concept.subdimensions?.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Subdimensiones</p>
+              <div className="space-y-1">
+                {concept.subdimensions.map((s, i) => (
+                  <div key={i} className="text-sm">
+                    <span className="text-indigo-400">{s.name}</span>
+                    <span className="text-gray-500"> — {s.description}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {concept.distinctions?.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Distinciones</p>
+              <div className="space-y-1">
+                {concept.distinctions.map((d, i) => (
+                  <div key={i} className="text-sm">
+                    <span className="text-yellow-400">{d.from_concept}</span>
+                    <span className="text-gray-500"> → {d.difference}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {concept.theoretical_role && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Rol teórico</p>
+              <p className="text-sm text-gray-400">{concept.theoretical_role}</p>
+            </div>
+          )}
+
+          {concept.measurement_approach && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Cómo se mide</p>
+              <p className="text-sm text-gray-400">{concept.measurement_approach}</p>
+            </div>
+          )}
+
+          {concept.key_tensions?.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Tensiones clave</p>
+              <ul className="space-y-1">
+                {concept.key_tensions.map((t, i) => (
+                  <li key={i} className="text-sm text-gray-400 flex gap-2">
+                    <span className="text-red-400 mt-0.5">⚡</span>{t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {concept.evolution_in_paper && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Evolución en el texto</p>
+              <p className="text-sm text-gray-400 italic border-l-2 border-gray-700 pl-3">
+                {concept.evolution_in_paper}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
