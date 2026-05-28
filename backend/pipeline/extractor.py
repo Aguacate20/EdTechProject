@@ -68,7 +68,7 @@ async def run_pipeline(
             logger.debug(f"[pipeline] Segmento '{seg.section_title}': {len(new_concepts)} conceptos")
         except Exception as e:
             logger.warning(f"[pipeline] Error en segmento '{seg.section_title}': {e}")
-        await asyncio.sleep(2)  # ← línea nueva
+        await asyncio.sleep(5)  # ← línea nueva
     
     # Deduplicar por id
     seen_ids: set[str] = set()
@@ -107,7 +107,7 @@ async def run_pipeline(
             all_clusters.extend(result.get("clusters", []))
         except Exception as e:
             logger.warning(f"[pipeline] Error relaciones en '{seg.section_title}': {e}")
-        await asyncio.sleep(2)  # ← línea nueva
+        await asyncio.sleep(5)  # ← línea nueva
     
     # Deduplicar relaciones por (from, to, type)
     seen_relations: set[tuple] = set()
