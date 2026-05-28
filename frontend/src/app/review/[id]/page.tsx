@@ -380,7 +380,7 @@ function ConceptCard({ concept, review, onReview }: {
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Subdimensiones</p>
               <div className="space-y-1">
-                {concept.subdimensions.map((s, i) => (
+                {(concept.subdimensions ?? []).map((s, i) => (
                   <div key={i} className="text-sm">
                     <span className="text-indigo-400">{s.name}</span>
                     <span className="text-gray-500"> — {s.description}</span>
@@ -394,7 +394,7 @@ function ConceptCard({ concept, review, onReview }: {
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Distinciones</p>
               <div className="space-y-1">
-                {concept.distinctions.map((d, i) => (
+                {(concept.distinctions ?? []).map((d, i) => (
                   <div key={i} className="text-sm">
                     <span className="text-yellow-400">{d.from_concept}</span>
                     <span className="text-gray-500"> → {d.difference}</span>
@@ -422,7 +422,7 @@ function ConceptCard({ concept, review, onReview }: {
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Tensiones clave</p>
               <ul className="space-y-1">
-                {concept.key_tensions.map((t, i) => (
+                {(concept.key_tensions ?? []).map((t, i) => (
                   <li key={i} className="text-sm text-gray-400 flex gap-2">
                     <span className="text-red-400 mt-0.5">⚡</span>{t}
                   </li>
