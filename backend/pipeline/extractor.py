@@ -68,6 +68,7 @@ async def run_pipeline(
             logger.debug(f"[pipeline] Segmento '{seg.section_title}': {len(new_concepts)} conceptos")
         except Exception as e:
             logger.warning(f"[pipeline] Error en segmento '{seg.section_title}': {e}")
+        await asyncio.sleep(2)  # ← línea nueva
     
     # Deduplicar por id
     seen_ids: set[str] = set()
