@@ -28,7 +28,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 PROVIDERS = {
     "groq": {
         "url": "https://api.groq.com/openai/v1/chat/completions",
-        "model": "llama-3.3-70b-versatile",
+        "model": "gemma2-9b-it",
         "token_env": "GROQ_API_KEY",
         "max_tokens_limit": 8000,
     },
