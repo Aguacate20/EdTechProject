@@ -45,6 +45,26 @@ interface Repertoire {
   confidence_extraction: "alta" | "media" | "baja";
 }
 
+interface ArgumentativePosition {
+  id: string;
+  concept_id: string;
+  position: string;
+  supporting_arguments: string[];
+  counterarguments: string[];
+  theoretical_source?: string;
+  confidence_extraction: "alta" | "media" | "baja";
+}
+
+interface EvidenceCase {
+  id: string;
+  concept_id: string;
+  kind: string;
+  description: string;
+  prediction_enabled: boolean;
+  source_pages: number[];
+  confidence_extraction: "alta" | "media" | "baja";
+}
+
 interface JobResult {
   course_id: string;
   source_filename: string;
@@ -52,6 +72,8 @@ interface JobResult {
   concepts: Concept[];
   relations: Relation[];
   repertoires: Repertoire[];
+  arguments: ArgumentativePosition[];
+  cases: EvidenceCase[];
   pipeline_stats: Record<string, number>;
   low_confidence_count: number;
 }
