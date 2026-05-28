@@ -64,7 +64,7 @@ interface Job {
   error: string | null;
 }
 
-type Tab = "conceptos" | "relaciones" | "repertorios";
+type Tab = "conceptos" | "relaciones" | "repertorios" | "argumentacion" | "casos";
 type ReviewState = "pending" | "approved" | "rejected";
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -221,7 +221,7 @@ export default function ReviewPage() {
         {/* Tabs + filtro */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex gap-1 bg-gray-900 rounded-lg p-1">
-            {(["conceptos", "relaciones", "repertorios"] as Tab[]).map(tab => (
+            {(["conceptos", "relaciones", "repertorios", "argumentacion", "casos"] as Tab[]).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -236,6 +236,8 @@ export default function ReviewPage() {
                   {tab === "conceptos" && result.concepts.length}
                   {tab === "relaciones" && result.relations.length}
                   {tab === "repertorios" && result.repertoires.length}
+                  {tab === "argumentacion" && result.arguments.length}
+                  {tab === "casos" && result.cases.length}
                 </span>
               </button>
             ))}
@@ -298,6 +300,112 @@ export default function ReviewPage() {
                 review={reviews[rep.id]}
                 onReview={(state) => setReview(rep.id, state)}
               />
+            ))}
+          </div>
+        )}
+        
+        {activeTab === "argumentacion" && (
+          <div className="space-y-3">
+            {(filter === "baja"
+              ? result.arguments.filter(a => a.confidence_extraction === "baja")
+              : result.arguments
+            ).length === 0 && <Empty mensaje="No hay argumentos con confianza baja." />}
+            {(filter === "baja"
+              ? result.arguments.filter(a => a.confidence_extraction === "baja")
+              : result.arguments
+            ).map((arg, i) => (
+              <div key={i} className={`rounded-xl border p-4 transition-all ${
+                reviews[arg.id] === "approved" ? "border-green-500/30 bg-green-500/5" :
+                reviews[arg.id] === "rejected" ? "border-red-500/30 bg-red-500/5 opacity-50" :
+                "border-gray-800 bg-gray-900/50"
+              }`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded-full">
+                        {arg.concept_id}
+                      </span>
+                      {arg.theoretical_source && (
+                        <span className="text-xs text-gray-500">{arg.theoretical_source}</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-200 font-medium mb-3">{arg.position}</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-green-400 mb-1">A favor</p>
+                        <ul className="space-y-1">
+                          {arg.supporting_arguments.map((a, j) => (
+                            <li key={j} className="text-xs text-gray-400 flex gap-1">
+                              <span className="text-green-500 mt-0.5">+</span>{a}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-xs text-red-400 mb-1">En contra</p>
+                        <ul className="space-y-1">
+                          {arg.counterarguments.map((c, j) => (
+                            <li key={j} className="text-xs text-gray-400 flex gap-1">
+                              <span className="text-red-500 mt-0.5">−</span>{c}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full border ${CONFIDENCE_COLORS[arg.confidence_extraction as keyof typeof CONFIDENCE_COLORS]}`}>
+                      {arg.confidence_extraction}
+                    </span>
+                    <ReviewButtons review={reviews[arg.id]} onReview={(s) => setReview(arg.id, s)} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === "casos" && (
+          <div className="space-y-3">
+            {(filter === "baja"
+              ? result.cases.filter(c => c.confidence_extraction === "baja")
+              : result.cases
+            ).length === 0 && <Empty mensaje="No hay casos con confianza baja." />}
+            {(filter === "baja"
+              ? result.cases.filter(c => c.confidence_extraction === "baja")
+              : result.cases
+            ).map((caso, i) => (
+              <div key={i} className={`rounded-xl border p-4 transition-all ${
+                reviews[caso.id] === "approved" ? "border-green-500/30 bg-green-500/5" :
+                reviews[caso.id] === "rejected" ? "border-red-500/30 bg-red-500/5 opacity-50" :
+                "border-gray-800 bg-gray-900/50"
+              }`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
+                        {caso.kind}
+                      </span>
+                      <span className="text-xs text-gray-500">{caso.concept_id}</span>
+                      {caso.prediction_enabled && (
+                        <span className="text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 px-2 py-0.5 rounded-full">
+                          predicción
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-300">{caso.description}</p>
+                    {caso.source_pages?.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-2">p. {caso.source_pages.join(", ")}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full border ${CONFIDENCE_COLORS[caso.confidence_extraction as keyof typeof CONFIDENCE_COLORS]}`}>
+                      {caso.confidence_extraction}
+                    </span>
+                    <ReviewButtons review={reviews[caso.id]} onReview={(s) => setReview(caso.id, s)} />
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         )}
