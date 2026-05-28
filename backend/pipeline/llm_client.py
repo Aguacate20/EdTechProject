@@ -52,7 +52,7 @@ def _get_provider() -> str:
 
 # ── Cliente principal ─────────────────────────────────────────────────────────
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+@retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2, min=5, max=30))
 async def call_llm(
     system_prompt: str,
     user_prompt: str,
