@@ -376,7 +376,7 @@ function ConceptCard({ concept, review, onReview }: {
       {expanded && concept.is_enriched && (
         <div className="border-t border-gray-800 p-4 space-y-4">
 
-          {concept.subdimensions?.length > 0 && (
+          {(concept.subdimensions ?? []).length > 0 && (
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Subdimensiones</p>
               <div className="space-y-1">
@@ -390,7 +390,7 @@ function ConceptCard({ concept, review, onReview }: {
             </div>
           )}
 
-          {concept.distinctions?.length > 0 && (
+          {(concept.distinctions ?? []).length > 0 && (
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Distinciones</p>
               <div className="space-y-1">
@@ -418,7 +418,7 @@ function ConceptCard({ concept, review, onReview }: {
             </div>
           )}
 
-          {concept.key_tensions?.length > 0 && (
+          {(concept.key_tensions ?? []).length > 0 && (
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Tensiones clave</p>
               <ul className="space-y-1">
