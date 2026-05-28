@@ -107,6 +107,7 @@ async def run_pipeline(
             all_clusters.extend(result.get("clusters", []))
         except Exception as e:
             logger.warning(f"[pipeline] Error relaciones en '{seg.section_title}': {e}")
+        await asyncio.sleep(2)  # ← línea nueva
     
     # Deduplicar relaciones por (from, to, type)
     seen_relations: set[tuple] = set()
