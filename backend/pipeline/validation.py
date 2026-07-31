@@ -1,0 +1,231 @@
+"""
+pipeline/validation.py — NUEVO en v2
+
+Validación y reparación del output del LLM contra el schema.
+
+En v1 los modelos Pydantic de `models/materia_prima.py` no se importaban en
+ninguna parte: `run_pipeline` devolvía los dicts crudos del LLM directo al
+frontend. El schema existía como documentación, no como contrato. Un valor de
+enum alucinado, un `concept_id` inventado o un campo faltante llegaban intactos
+hasta la pantalla del profesor.
+
+Criterio de esta capa: **reparar cuando es seguro, descartar cuando no, y
+reportar siempre**. Nunca silenciar. El `validation_report` es lo que permite
+distinguir un paper pobre de una extracción fallida.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from pydantic import ValidationError
+
+from models.materia_prima import (
+    Concept,
+    ConceptAxis,
+    ConceptCluster,
+    ConceptRelation,
+    CommonRepertoire,
+    EvidenceCase,
+    Framework,
+    GeneratedScenario,
+    MateriaPrimaOutput,
+    RelationType,
+    Thesis,
+    TransferDistance,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _validate_list(raw: list[dict], model, label: str, report: dict) -> list:
+    ok, dropped = [], []
+    for item in raw or []:
+        try:
+            ok.append(model(**item))
+        except ValidationError as e:
+            dropped.append({
+                "item_id": item.get("id") if isinstance(item, dict) else None,
+                "errors": [f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}"
+                           for err in e.errors()[:3]],
+            })
+        except TypeError:
+            dropped.append({"item_id": None, "errors": ["item no es un objeto"]})
+    if dropped:
+        report.setdefault("dropped", {})[label] = dropped
+        logger.warning("[validation] %s: %d descartados de %d", label, len(dropped), len(raw or []))
+    return ok
+
+
+def _coerce_relation_types(relations: list[dict], report: dict) -> list[dict]:
+    """Repara tipos de relación fuera de la tipología en vez de descartar la arista."""
+    valid = {t.value for t in RelationType}
+    aliases = {
+        "causa_efecto": "causa", "produce": "causa", "genera": "causa",
+        "ejemplo": "ejemplifica", "ilustra": "ejemplifica",
+        "generaliza_a": "generaliza", "abstrae": "generaliza",
+        "contrasta_con": "contrasta", "difiere": "contrasta", "se_opone": "contradice",
+        "depende": "requiere", "presupone": "requiere",
+        "amplia": "extiende", "amplía": "extiende",
+        "refina": "matiza", "limita": "matiza",
+        "sustenta": "apoya", "respalda": "apoya",
+    }
+    repaired = 0
+    for r in relations:
+        t = (r.get("relation_type") or "").strip().lower().replace(" ", "_")
+        if t in valid:
+            r["relation_type"] = t
+            continue
+        if t in aliases:
+            r["relation_type"] = aliases[t]
+            repaired += 1
+        else:
+            r["relation_type"] = "apoya"
+            r["confidence_extraction"] = min(_num(r.get("confidence_extraction")), 0.3)
+            repaired += 1
+    if repaired:
+        report["relation_types_repaired"] = repaired
+    return relations
+
+
+def _num(v, default: float = 0.6) -> float:
+    if isinstance(v, (int, float)):
+        return float(v)
+    return {"alta": 0.9, "media": 0.6, "baja": 0.3}.get(str(v).lower(), default)
+
+
+def _prune_references(items: list[dict], field: str, valid_ids: set[str], label: str, report: dict) -> list[dict]:
+    """Quita referencias a conceptos inexistentes. Si un item se queda sin
+    ninguna referencia válida, se descarta entero."""
+    kept, dropped = [], 0
+    for item in items or []:
+        refs = item.get(field) or []
+        if isinstance(refs, str):
+            refs = [refs]
+        clean = [r for r in refs if r in valid_ids]
+        if not clean:
+            dropped += 1
+            continue
+        item[field] = clean
+        kept.append(item)
+    if dropped:
+        report.setdefault("orphaned", {})[label] = dropped
+    return kept
+
+
+def _fix_distances(scenarios: list[dict], cases_by_id: dict[str, dict], report: dict) -> list[dict]:
+    """Recalcula `distancia` en vez de aceptar la declaración del LLM.
+
+    Regla: si el escenario cambia de dominio respecto al caso padre, la
+    distancia es `lejana` por definición, diga lo que diga el modelo. Es la
+    diferencia entre medir transferencia y medir reconocimiento de superficie.
+    """
+    corrected = 0
+    for s in scenarios or []:
+        parent = cases_by_id.get(s.get("parent_case_id") or "")
+        if not parent:
+            continue
+        pdom = (parent.get("dominio") or "").strip().lower()
+        sdom = (s.get("dominio") or "").strip().lower()
+        declared = (s.get("distancia") or "cercana").strip().lower()
+        valid = {d.value for d in TransferDistance}
+        if pdom and sdom and pdom != sdom:
+            # Cambiar de dominio ES la definición operativa de lejanía.
+            expected = TransferDistance.LEJANA.value
+        elif pdom and sdom and pdom == sdom:
+            # Y no cambiarlo la excluye: los modelos sobredeclaran 'lejana' para
+            # escenarios que solo cambian nombres propios y cifras.
+            expected = declared if declared in {"cercana", "media"} else TransferDistance.MEDIA.value
+        else:
+            expected = declared if declared in valid else TransferDistance.MEDIA.value
+        if expected != declared:
+            s["distancia"] = expected
+            corrected += 1
+    if corrected:
+        report["scenario_distances_corrected"] = corrected
+    return scenarios
+
+
+def validate_output(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Valida el dict crudo del pipeline. Devuelve (output limpio, informe)."""
+    report: dict[str, Any] = {}
+
+    concepts = _validate_list(raw.get("concepts", []), Concept, "concepts", report)
+    valid_ids = {c.id for c in concepts}
+    report["concepts_valid"] = len(concepts)
+
+    relations_raw = _coerce_relation_types(raw.get("relations", []), report)
+    relations_raw = [
+        r for r in relations_raw
+        if r.get("from_concept_id") in valid_ids and r.get("to_concept_id") in valid_ids
+    ]
+    relations = _validate_list(relations_raw, ConceptRelation, "relations", report)
+
+    repertoires_raw = [
+        r for r in raw.get("repertoires", []) if r.get("concept_id") in valid_ids
+    ]
+    repertoires = _validate_list(repertoires_raw, CommonRepertoire, "repertoires", report)
+
+    frameworks = _validate_list(raw.get("frameworks", []), Framework, "frameworks", report)
+    framework_ids = {f.id for f in frameworks}
+
+    theses_raw = _prune_references(raw.get("theses", []), "concept_ids", valid_ids, "theses", report)
+    for t in theses_raw:
+        if t.get("framework_id") and t["framework_id"] not in framework_ids:
+            t["framework_id"] = None
+    theses = _validate_list(theses_raw, Thesis, "theses", report)
+
+    cases_raw = _prune_references(raw.get("cases", []), "concept_ids", valid_ids, "cases", report)
+    for c in cases_raw:
+        if not c.get("primary_concept_id") and c.get("concept_ids"):
+            c["primary_concept_id"] = c["concept_ids"][0]
+    cases = _validate_list(cases_raw, EvidenceCase, "cases", report)
+    cases_by_id = {c.id: c.model_dump(mode="json") for c in cases}
+
+    scenarios_raw = [
+        s for s in raw.get("scenarios", []) if s.get("parent_case_id") in cases_by_id
+    ]
+    scenarios_raw = _fix_distances(scenarios_raw, cases_by_id, report)
+    scenarios_raw = _prune_references(scenarios_raw, "concept_ids", valid_ids, "scenarios", report)
+    scenarios = _validate_list(scenarios_raw, GeneratedScenario, "scenarios", report)
+
+    clusters = _validate_list(raw.get("clusters", []), ConceptCluster, "clusters", report)
+    axes = _validate_list(raw.get("axes", []), ConceptAxis, "axes", report)
+
+    clean = dict(raw)
+    clean.update({
+        "concepts": [c.model_dump(mode="json") for c in concepts],
+        "relations": [r.model_dump(mode="json") for r in relations],
+        "repertoires": [r.model_dump(mode="json") for r in repertoires],
+        "frameworks": [f.model_dump(mode="json") for f in frameworks],
+        "theses": [t.model_dump(mode="json") for t in theses],
+        "cases": [c.model_dump(mode="json") for c in cases],
+        "scenarios": [s.model_dump(mode="json") for s in scenarios],
+        "clusters": [c.model_dump(mode="json") for c in clusters],
+        "axes": [a.model_dump(mode="json") for a in axes],
+    })
+
+    # Umbral de confianza: se cuenta sobre float, no sobre etiqueta.
+    clean["low_confidence_count"] = sum(
+        1 for c in concepts if c.confidence_extraction < 0.5
+    ) + sum(
+        1 for r in relations if r.confidence_extraction < 0.5
+    )
+
+    report["totals"] = {
+        "concepts": len(concepts), "relations": len(relations),
+        "repertoires": len(repertoires), "frameworks": len(frameworks),
+        "theses": len(theses), "cases": len(cases), "scenarios": len(scenarios),
+        "clusters": len(clusters), "axes": len(axes),
+    }
+    return clean, report
+
+
+def to_model(clean: dict[str, Any]) -> MateriaPrimaOutput | None:
+    """Construye el modelo completo. Si falla, se devuelve None y el pipeline
+    entrega el dict validado por partes en vez de romper la petición."""
+    try:
+        return MateriaPrimaOutput(**clean)
+    except ValidationError as e:
+        logger.error("[validation] MateriaPrimaOutput inválido: %s", e.errors()[:3])
+        return None

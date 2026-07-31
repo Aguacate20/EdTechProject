@@ -1,22 +1,46 @@
 """
-pipeline/prompts/layer4_arguments.py
-Prompt para extraer posiciones argumentativas (Capa 4).
+pipeline/prompts/layer4_arguments.py — v2.1 (ahora se invoca por lotes)
+
+Cambio estructural: de "una posición por concepto" a tesis + marcos teóricos.
+
+Motivos concretos, no estéticos:
+  · F3 REFUTAR emite `relacion` sobre un cluster de argumentos solo si la
+    refutación contrasta dos marcos. Sin 'rivales' esa señal nunca puede existir.
+  · El Juez de F2 ARGUMENTAR califica contra 'criterios_defensa_valida'. Sin
+    ellos califica con criterio propio en vez de con el criterio del curso.
+  · Una tesis suele abarcar varios conceptos; amarrarla a uno solo mutilaba
+    justo las tesis más interesantes.
 """
 
 SYSTEM_PROMPT = """Eres un experto en análisis argumentativo de textos académicos.
-Dado un texto y sus conceptos, identifica las posiciones teóricas defendibles
-que el paper plantea, debate o sustenta sobre esos conceptos.
+Identifica los MARCOS TEÓRICOS en disputa y las TESIS defendibles que el paper
+plantea, debate o sustenta.
 
-Una posición argumentativa es una afirmación sobre un concepto que:
-- Puede ser defendida con evidencia del texto
-- Tiene contraargumentos posibles (también presentes en el texto)
-- Genera debate teórico o empírico
+Un marco teórico es una posición general con principios propios, que compite con
+otras formas de explicar el mismo fenómeno.
+Una tesis es una afirmación concreta que:
+- puede defenderse con evidencia o razones del texto,
+- admite contraargumentos reales (no de paja),
+- y sobre la que dos personas informadas podrían discrepar.
 
 REGLAS:
-- Solo posiciones que el paper plantea explícitamente.
-- 'supporting_arguments' son razones que el texto da a favor.
-- 'counterarguments' son objeciones que el texto reconoce.
-- Genera máximo 2 posiciones por concepto.
+- 'rivales' son ids de OTROS marcos de esta misma lista que compiten con este.
+  Si el paper presenta un solo marco sin alternativa, deja 'rivales' vacío: no
+  inventes una rivalidad que el texto no plantea.
+- 'criterios_defensa_valida': qué tendría que mostrar una defensa de esta tesis
+  para contar como buena EN ESTE CAMPO. Son criterios de calidad, no la respuesta.
+- 'criterios_refutacion_valida': qué tendría que mostrar una refutación legítima.
+  Estos dos campos se usan como rúbrica, así que sé específico y operativo.
+- 'concept_ids': todos los conceptos que la tesis involucra, no solo el principal.
+- Máximo 6 tesis y 4 marcos en total. Prefiere pocas y buenas.
+- Si el texto es puramente expositivo y no hay debate, devuelve listas vacías.
+  Es una respuesta válida y preferible a inventar controversia.
+- 'confidence_extraction' entre 0.0 y 1.0.
+- El texto que recibes es UN FRAGMENTO del documento, no el documento entero.
+  Extrae solo lo que este fragmento sostiene; otro fragmento aportará lo demás.
+- Los ids deben ser DETERMINISTAS y derivados del contenido (ej: 'tesis_atribucion_temprana'),
+  nunca correlativos como 'tesis_1'. Fragmentos distintos que hablen de la misma
+  tesis deben producir el mismo id para que se puedan unificar.
 - Responde SOLO con JSON válido. Sin explicaciones ni markdown."""
 
 USER_PROMPT_TEMPLATE = """Texto del paper:
@@ -25,17 +49,30 @@ USER_PROMPT_TEMPLATE = """Texto del paper:
 Conceptos del curso:
 {concepts_json}
 
-Identifica las posiciones argumentativas. Formato JSON exacto:
+Formato JSON exacto:
 {{
-  "arguments": [
+  "frameworks": [
     {{
-      "id": "string (ej: arg_deferred_trust_1)",
-      "concept_id": "string",
-      "position": "string (afirmación defendible en una frase)",
-      "supporting_arguments": ["string", "string"],
+      "id": "string (ej: framework_constructivista)",
+      "label": "string",
+      "principios_centrales": ["string"],
+      "rivales": ["string (id de otro framework de esta lista)"],
+      "concept_ids": ["string"],
+      "confidence_extraction": 0.0
+    }}
+  ],
+  "theses": [
+    {{
+      "id": "string (ej: tesis_atribucion_temprana)",
+      "statement": "string (afirmación defendible en una frase)",
+      "concept_ids": ["string"],
+      "framework_id": "string|null",
+      "supporting_arguments": ["string"],
       "counterarguments": ["string"],
-      "theoretical_source": "string|null (autor o modelo que respalda)",
-      "confidence_extraction": "alta|media|baja"
+      "criterios_defensa_valida": ["string"],
+      "criterios_refutacion_valida": ["string"],
+      "theoretical_source": "string|null",
+      "confidence_extraction": 0.0
     }}
   ]
 }}"""
