@@ -130,6 +130,42 @@ interface Meta {
 
 interface LayerStatus { layer: string; status: string; items: number; detail: string }
 
+/* Paquete de juego: vista compilada de la materia prima, organizada por
+   búsqueda en vez de por etapa del pipeline. */
+interface BundleUnit {
+  id: string; numero: number; titulo: string; concept_ids: string[];
+  dificultad_media: number; tiene_puerta: boolean; tiene_umbral: boolean;
+}
+interface BundleConcept {
+  id: string; titulo: string; dificultad_declarada: string; dificultad_objetivo: number;
+  n_opciones: number; andamiaje: string; es_puerta: boolean; es_umbral: boolean;
+  unidad_id?: string; posicion: number; n_distractores: number; n_efectivo: number;
+}
+interface MechanicVerdict {
+  mechanic_id: string; nombre: string; familia: string; familia_nombre: string;
+  disponible: boolean; faltantes: string[]; items_precompilados: number;
+  requiere_juez: boolean; requiere_peer: boolean;
+  senales: { dimension: string; modalidad?: string | null; peso_base?: number | null }[];
+}
+interface ReadinessRow {
+  dimension: string; medible: boolean;
+  mecanicas_disponibles: string[]; mecanicas_bloqueadas: string[]; motivo: string;
+}
+interface GameBundle {
+  bundle_version: string;
+  concepts: Record<string, BundleConcept>;
+  study_plan: {
+    orden: string[]; unidades: BundleUnit[];
+    curva_dificultad: { unidad_id: string; dificultad_objetivo: number; andamiaje_sugerido: string }[];
+    calidad: { nivel: string; senales_usadas: number; motivo?: string };
+  };
+  distractor_pools: Record<string, { id: string; etiqueta: string; fuente: string; plausibilidad: number; repertoire_id?: string | null }[]>;
+  items: Record<string, unknown[]>;
+  mechanics: Record<string, MechanicVerdict>;
+  readiness: ReadinessRow[];
+  stats: Record<string, any>;
+}
+
 interface JobResult {
   course_id: string;
   source_filename: string;
@@ -150,6 +186,7 @@ interface JobResult {
   layer_status?: LayerStatus[];
   validation_report?: Record<string, unknown>;
   review_flags?: Record<string, unknown>;
+  game_bundle?: GameBundle | null;
   low_confidence_count?: number;
   truncated?: boolean;
 }
@@ -159,7 +196,7 @@ interface Job {
   result: JobResult | null; error: string | null;
 }
 
-type Tab = "diagnostico" | "conceptos" | "mapa" | "repertorios" | "debate" | "casos" | "plan";
+type Tab = "diagnostico" | "conceptos" | "mapa" | "repertorios" | "debate" | "casos" | "plan" | "juego";
 type ReviewState = "pending" | "approved" | "rejected";
 
 /* ────────────────────────────────────────────────────────────
@@ -443,6 +480,7 @@ export default function ReviewPage() {
     );
   }
 
+  const bundle = result.game_bundle ?? null;
   const theses: Thesis[] = result.theses?.length ? result.theses : (result.arguments ?? []);
   const scenarios = result.scenarios ?? [];
   const layers = result.layer_status ?? [];
@@ -464,6 +502,7 @@ export default function ReviewPage() {
     { key: "debate", label: "Debate", count: theses.length },
     { key: "casos", label: "Casos", count: result.cases.length + scenarios.length },
     { key: "plan", label: "Plan", count: meta?.signal_coverage?.length },
+    { key: "juego", label: "Juego", count: bundle?.stats?.items_precompilados },
   ];
 
   return (
@@ -586,6 +625,9 @@ export default function ReviewPage() {
 
         {/* ── Plan ── */}
         {tab === "plan" && <Plan meta={meta} name={name} />}
+
+        {/* ── Juego ── */}
+        {tab === "juego" && <Juego bundle={bundle} jobId={String(id)} backendUrl={backendUrl} />}
       </div>
     </main>
   );
@@ -1299,6 +1341,236 @@ function Plan({ meta, name }: { meta: Meta | null; name: (id?: string | null) =>
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+
+/* ────────────────────────────────────────────────────────────
+   Paquete de juego
+   ──────────────────────────────────────────────────────────── */
+
+const FUENTE_LABEL: Record<string, string> = {
+  distincion: "distinción explícita",
+  repertorio: "intuición cotidiana",
+  vecino_grafo: "vecino en el mapa",
+};
+
+function Juego({
+  bundle, jobId, backendUrl,
+}: { bundle: GameBundle | null; jobId: string; backendUrl: string }) {
+  const [familia, setFamilia] = useState<string | null>(null);
+
+  if (!bundle) {
+    return (
+      <Empty>
+        No se compiló un paquete de juego. Suele significar que la extracción no
+        produjo conceptos suficientes.
+      </Empty>
+    );
+  }
+
+  const s = bundle.stats ?? {};
+  const mechs = Object.values(bundle.mechanics ?? {});
+  const porFamilia: Record<string, MechanicVerdict[]> = {};
+  mechs.forEach((m) => { (porFamilia[m.familia] ??= []).push(m); });
+  const familias = Object.keys(porFamilia).sort();
+  const visibles = familia ? porFamilia[familia] ?? [] : mechs;
+
+  const calidad = bundle.study_plan?.calidad;
+  const unidades = bundle.study_plan?.unidades ?? [];
+  const curvaPorUnidad: Record<string, { dificultad_objetivo: number; andamiaje_sugerido: string }> = {};
+  (bundle.study_plan?.curva_dificultad ?? []).forEach((c) => { curvaPorUnidad[c.unidad_id] = c; });
+
+  return (
+    <div className="space-y-6">
+      {/* Descarga */}
+      <Card className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium">Paquete listo para el motor de juego</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            versión {bundle.bundle_version} · conceptos indexados, grafo precalculado,
+            distractores y ítems ya compilados
+          </p>
+        </div>
+        <a
+          href={`${backendUrl}/jobs/${jobId}/bundle`}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 rounded border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-300 hover:bg-indigo-500/20"
+        >
+          Abrir JSON del paquete
+        </a>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {[
+          ["Conceptos", s.conceptos],
+          ["Unidades", s.unidades],
+          ["Ítems listos", s.items_precompilados],
+          ["Mecánicas", `${s.mecanicas_disponibles}/${s.mecanicas_totales}`],
+          ["Dimensiones", s.dimensiones_medibles],
+          ["Aristas", s.aristas],
+        ].map(([label, valor]) => (
+          <Card key={String(label)} className="p-3">
+            <p className="font-mono text-xl">{String(valor ?? "—")}</p>
+            <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
+          </Card>
+        ))}
+      </div>
+
+      {/* Plan de estudio */}
+      <div>
+        <SectionTitle count={unidades.length}>Plan de estudio</SectionTitle>
+        {calidad && calidad.nivel !== "buena" && (
+          <Card className="mb-2 border-amber-500/30 bg-amber-500/5 text-xs text-amber-200">
+            Orden {calidad.nivel}: {calidad.motivo}
+          </Card>
+        )}
+        <div className="space-y-2">
+          {unidades.map((u) => {
+            const cfg = curvaPorUnidad[u.id];
+            return (
+              <Card key={u.id}>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs text-gray-600">{u.numero}</span>
+                  <span className="text-sm font-medium">{u.titulo}</span>
+                  {u.tiene_puerta && <Chip className="border-indigo-500/30 bg-indigo-500/10 text-indigo-300">puerta</Chip>}
+                  {u.tiene_umbral && <Chip className="border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300">umbral</Chip>}
+                  {cfg && (
+                    <Chip className="border-gray-700 text-gray-400">
+                      andamiaje {cfg.andamiaje_sugerido}
+                    </Chip>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  {u.concept_ids.map((cid) => {
+                    const c = bundle.concepts[cid];
+                    if (!c) return null;
+                    return (
+                      <div key={cid} className="flex items-center gap-3 text-xs">
+                        <span className="w-6 shrink-0 text-right font-mono text-gray-600">{c.posicion}</span>
+                        <span className="w-52 shrink-0 truncate text-gray-300" title={c.titulo}>{c.titulo}</span>
+                        <div className="flex-1"><Bar value={c.dificultad_objetivo} tone="auto" /></div>
+                        <span className="w-8 shrink-0 text-right font-mono text-gray-600">{pct(c.dificultad_objetivo)}</span>
+                        <span className="w-16 shrink-0 text-right font-mono text-gray-600">
+                          {c.n_distractores} dist.
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Mecánicas */}
+      <div>
+        <SectionTitle count={mechs.length}>Mecánicas</SectionTitle>
+        <div className="mb-2 flex flex-wrap gap-1">
+          <button
+            onClick={() => setFamilia(null)}
+            className={`rounded border px-2 py-1 text-xs ${familia === null ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-300" : "border-gray-700 text-gray-500"}`}
+          >
+            Todas
+          </button>
+          {familias.map((f) => (
+            <button
+              key={f}
+              onClick={() => setFamilia(f)}
+              className={`rounded border px-2 py-1 text-xs ${familia === f ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-300" : "border-gray-700 text-gray-500"}`}
+            >
+              {f} · {porFamilia[f][0]?.familia_nombre}
+            </button>
+          ))}
+        </div>
+        <Card className="divide-y divide-gray-800 p-0">
+          {visibles.map((m) => (
+            <div key={m.mechanic_id} className={`px-4 py-2.5 ${m.disponible ? "" : "opacity-60"}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-8 shrink-0 font-mono text-xs text-gray-600">{m.mechanic_id}</span>
+                <span className="text-sm">{m.nombre}</span>
+                <Chip className={m.disponible ? STATUS_CLASS.ok : STATUS_CLASS.empty}>
+                  {m.disponible ? "lista" : "bloqueada"}
+                </Chip>
+                {m.items_precompilados > 0 && (
+                  <Chip className="border-gray-700 text-gray-400">
+                    {m.items_precompilados} ítems
+                  </Chip>
+                )}
+                {m.requiere_juez && <Chip className="border-gray-700 text-gray-500">necesita IA</Chip>}
+                {m.requiere_peer && <Chip className="border-gray-700 text-gray-500">necesita peer</Chip>}
+                <span className="ml-auto font-mono text-[11px] text-gray-600">
+                  {m.senales.map((x) => x.dimension).join(" · ")}
+                </span>
+              </div>
+              {!m.disponible && m.faltantes.length > 0 && (
+                <p className="mt-1 pl-10 text-xs text-amber-300/80">{m.faltantes.join(" · ")}</p>
+              )}
+            </div>
+          ))}
+        </Card>
+      </div>
+
+      {/* Dimensiones */}
+      <div>
+        <SectionTitle>Qué puede medir el juego</SectionTitle>
+        <Card className="divide-y divide-gray-800 p-0">
+          {(bundle.readiness ?? []).map((r) => (
+            <div key={r.dimension} className="px-4 py-2">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="w-44 shrink-0 text-gray-300">
+                  {DIMENSION_LABEL[r.dimension] ?? r.dimension}
+                </span>
+                <Chip className={r.medible ? STATUS_CLASS.ok : STATUS_CLASS.empty}>
+                  {r.medible ? "medible" : "no medible"}
+                </Chip>
+                <span className="font-mono text-[11px] text-gray-600">
+                  {r.mecanicas_disponibles.join(" ")}
+                </span>
+              </div>
+              {!r.medible && r.motivo && (
+                <p className="mt-1 text-xs text-amber-300/80">{r.motivo}</p>
+              )}
+            </div>
+          ))}
+        </Card>
+      </div>
+
+      {/* Distractores */}
+      <div>
+        <SectionTitle count={Object.keys(bundle.distractor_pools ?? {}).length}>
+          Distractores compilados
+        </SectionTitle>
+        <p className="mb-2 -mt-1 text-xs text-gray-500">
+          Los caracterizados permiten saber qué idea previa activó el estudiante al
+          equivocarse; los de vecindad solo dicen que falló.
+        </p>
+        <div className="space-y-2">
+          {Object.entries(bundle.distractor_pools ?? {}).slice(0, 12).map(([cid, pool]) => (
+            <Card key={cid}>
+              <p className="mb-1.5 text-sm font-medium">{bundle.concepts[cid]?.titulo ?? cid}</p>
+              <div className="space-y-1">
+                {pool.map((d) => (
+                  <div key={d.id} className="flex items-center gap-2 text-xs">
+                    <Chip className={
+                      d.fuente === "vecino_grafo"
+                        ? "border-gray-700 text-gray-500"
+                        : "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+                    }>
+                      {FUENTE_LABEL[d.fuente] ?? d.fuente}
+                    </Chip>
+                    <span className="min-w-0 flex-1 truncate text-gray-400">{d.etiqueta}</span>
+                    <span className="shrink-0 font-mono text-gray-600">{d.plausibilidad}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
