@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { Suspense, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type JobStatus = "idle" | "uploading" | "pending" | "running" | "completed" | "failed";
@@ -31,7 +31,32 @@ const STATUS_DESCRIPTIONS: Record<JobStatus, string> = {
   failed: "Revisa el error y vuelve a intentarlo.",
 };
 
+/* Next.js 15 exige que todo componente que lea los parámetros de la URL esté
+   dentro de un límite de Suspense.
+   
+   El motivo: al pre-renderizar la página en el servidor esos parámetros no
+   existen todavía, así que el framework necesita saber qué mostrar mientras
+   tanto. Sin el Suspense la compilación falla en vez de degradar en silencio,
+   que es la decisión correcta pero rompe el build.
+   
+   El componente real pasa a llamarse UploadInner y el export por defecto solo
+   lo envuelve. */
+
 export default function UploadPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#0F0F13] text-sm text-gray-500">
+          Cargando…
+        </main>
+      }
+    >
+      <UploadInner />
+    </Suspense>
+  );
+}
+
+function UploadInner() {
   const router = useRouter();
   // Quién sube. Sin esto el documento se procesa pero no se suma al plan de
   // nadie, que era el motivo por el que la subida quedaba desconectada del

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 /* ────────────────────────────────────────────────────────────
@@ -68,7 +68,24 @@ const MECANICA_LABEL: Record<string, string> = {
   C1: "Conectar", E1: "Predecir", E3: "Aplicar",
 };
 
+/* Mismo caso que /upload: esta página lee `?student=` de la URL, así que
+   necesita su límite de Suspense para poder pre-renderizarse. */
+
 export default function SesionPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#0F0F13] text-sm text-gray-500">
+          Cargando…
+        </main>
+      }
+    >
+      <SesionInner />
+    </Suspense>
+  );
+}
+
+function SesionInner() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const params = useSearchParams();
