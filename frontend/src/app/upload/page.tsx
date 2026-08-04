@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type JobStatus = "idle" | "uploading" | "pending" | "running" | "completed" | "failed";
 
@@ -33,6 +33,10 @@ const STATUS_DESCRIPTIONS: Record<JobStatus, string> = {
 
 export default function UploadPage() {
   const router = useRouter();
+  // Quién sube. Sin esto el documento se procesa pero no se suma al plan de
+  // nadie, que era el motivo por el que la subida quedaba desconectada del
+  // resto del sistema.
+  const studentId = useSearchParams().get("student");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -45,6 +49,7 @@ export default function UploadPage() {
   });
 
   const [dragOver, setDragOver] = useState(false);
+  const volverA = studentId ? `/estudiante/${studentId}` : "/estudiantes";
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -68,6 +73,7 @@ export default function UploadPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      if (studentId) formData.append("student_id", studentId);
 
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:7860";
       const res = await fetch(`${backendUrl}/extract`, {
@@ -93,8 +99,16 @@ export default function UploadPage() {
 
           if (job.status === "completed") {
             clearInterval(pollingRef.current!);
-            // Navegar a la UI de revisión
-            router.push(`/review/${data.job_id}`);
+            // Si la subida vino desde un perfil, el documento ya se sumó al
+            // plan en el backend: se vuelve al perfil, que es donde el
+            // estudiante decide qué hacer con el material nuevo. La página de
+            // revisión sigue disponible para verificar la extracción, pero no
+            // es el destino natural de alguien que está armando su plan.
+            router.push(
+              studentId
+                ? `/estudiante/${studentId}`
+                : `/review/${data.job_id}`
+            );
           } else if (job.status === "failed") {
             clearInterval(pollingRef.current!);
             setState(s => ({ ...s, error: job.error ?? "Error desconocido" }));
@@ -124,6 +138,14 @@ export default function UploadPage() {
 
   return (
     <main className="min-h-screen bg-[#0F0F13] text-white flex flex-col items-center justify-center p-6">
+      {/* Salida siempre visible: sin esto, entrar al extractor era un camino
+          sin retorno hacia el resto del sistema. */}
+      <a
+        href={volverA}
+        className="absolute left-4 top-4 text-xs text-gray-500 hover:text-gray-300"
+      >
+        ← {studentId ? "Volver a mi perfil" : "Ir a mi perfil"}
+      </a>
       
       {/* Header */}
       <div className="text-center mb-12">
