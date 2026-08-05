@@ -16,7 +16,10 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 interface Opcion { id: string; texto: string }
 
 interface Paso {
-  tipo: "exposicion" | "ejercicio";
+  // Los cuatro tipos que no son ejercicio son envolturas metacognitivas:
+  // producen calibración, planeación y autorreflexión, que son tres
+  // dimensiones del perfil que ninguna pregunta de contenido puede medir.
+  tipo: "exposicion" | "ejercicio" | "calibracion" | "planeacion" | "reflexion";
   requiere_respuesta: boolean;
   concept_id: string;
   // exposición
@@ -37,6 +40,7 @@ interface Paso {
   dominio?: string;
   pista_disponible?: boolean;
   andamiaje?: Record<string, boolean>;
+  ayuda?: string;
 }
 
 interface Feedback {
@@ -66,6 +70,13 @@ const CARGA_LABEL: Record<string, string> = {
 const MECANICA_LABEL: Record<string, string> = {
   A1: "Reconocer", A3: "Evocar", B1: "Distinguir", B2: "Clasificar",
   C1: "Conectar", E1: "Predecir", E3: "Aplicar",
+  G1: "Calibrar", I1: "Planear", I4: "Reflexionar",
+};
+
+const META_TITULO: Record<string, string> = {
+  calibracion: "Antes de responder",
+  planeacion: "Planificá tu sesión",
+  reflexion: "Para cerrar",
 };
 
 /* Mismo caso que /upload: esta página lee `?student=` de la URL, así que
@@ -164,6 +175,28 @@ function SesionInner() {
     await cargarPaso();
   }
 
+  async function responderMeta(valor: string) {
+    setCargando(true);
+    try {
+      const r = await fetch(`${backendUrl}/sessions/${id}/answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ respuesta: valor, duration_ms: Date.now() - inicioRef.current }),
+      });
+      const d = await r.json();
+      // La reflexión final cierra la sesión: su respuesta lleva al resumen.
+      if (paso?.tipo === "reflexion") {
+        setRespuesta({ ...d, correcto: null, senales_emitidas: [] });
+        return;
+      }
+      if (d.terminada) setTerminada(true); else await cargarPaso();
+    } catch {
+      setError("No se pudo registrar la respuesta.");
+    } finally {
+      setCargando(false);
+    }
+  }
+
   async function pedirPista() {
     const r = await fetch(`${backendUrl}/sessions/${id}/hint`, { method: "POST" });
     if (!r.ok) return;
@@ -248,6 +281,52 @@ function SesionInner() {
             >
               Entendido, seguir
             </button>
+          </div>
+        )}
+
+        {/* ── Pasos metacognitivos ──
+             No hay respuesta correcta: lo que se mide es la decisión en sí.
+             Por eso no muestran corrección ni puntaje. */}
+        {paso && ["calibracion", "planeacion", "reflexion"].includes(paso.tipo) && (
+          <div className="space-y-5">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[11px] text-gray-600">{paso.mechanic_id}</span>
+              <span className="text-[11px] uppercase tracking-wider text-gray-500">
+                {META_TITULO[paso.tipo]}
+              </span>
+            </div>
+
+            <h2 className="text-lg">{paso.enunciado}</h2>
+            {paso.ayuda && <p className="text-sm text-gray-500">{paso.ayuda}</p>}
+
+            <div className="space-y-2">
+              {(paso.opciones ?? []).map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => !respuesta && responderMeta(o.id)}
+                  disabled={cargando || !!respuesta}
+                  className={`block w-full rounded border px-3 py-2.5 text-left text-sm transition ${
+                    seleccion === o.id
+                      ? "border-indigo-400 bg-indigo-500/10"
+                      : "border-gray-800 hover:border-gray-700"
+                  } disabled:opacity-70`}
+                >
+                  {o.texto}
+                </button>
+              ))}
+            </div>
+
+            {respuesta?.feedback && (
+              <div className="space-y-3 border-t border-gray-800 pt-4">
+                <p className="text-sm text-gray-300">{respuesta.feedback.mensaje}</p>
+                <button
+                  onClick={() => (respuesta.terminada ? setTerminada(true) : cargarPaso())}
+                  className="rounded bg-indigo-500 px-4 py-2 text-sm font-medium hover:bg-indigo-400"
+                >
+                  {respuesta.terminada ? "Ver resumen" : "Siguiente"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

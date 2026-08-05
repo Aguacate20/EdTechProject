@@ -322,7 +322,9 @@ export default function PlanPage() {
           <Casos cases={mp.cases ?? []} scenarios={mp.scenarios ?? []} name={name} />
         )}
 
-        {tab === "juego" && <Juego plan={plan} />}
+        {tab === "juego" && (
+          <Juego plan={plan} studentId={String(id)} backendUrl={backendUrl} />
+        )}
 
         {tab === "diagnostico" && <DiagnosticoDocs docs={docs} plan={plan} />}
       </div>
@@ -507,15 +509,41 @@ function Secuencia({ plan }: { plan: any }) {
    Qué se puede jugar
    ──────────────────────────────────────────────────────────── */
 
-function Juego({ plan }: { plan: any }) {
+function Juego({
+  plan, studentId, backendUrl,
+}: { plan: any; studentId: string; backendUrl: string }) {
   const [familia, setFamilia] = useState<string | null>(null);
   const mechs: any[] = Object.values(plan.mechanics ?? {});
   const porFamilia: Record<string, any[]> = {};
   mechs.forEach((m) => { (porFamilia[m.familia] ??= []).push(m); });
   const visibles = familia ? porFamilia[familia] ?? [] : mechs;
 
+  const s = plan.stats ?? {};
+
   return (
     <div className="space-y-6">
+      {/* El paquete que consume el motor de juego. Se sirve aparte de la
+          materia prima a propósito: esta página está organizada para que la
+          lea una persona, y el paquete para que lo lea un programa. */}
+      <Card className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium">Paquete listo para el motor de juego</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {s.conceptos} conceptos indexados · {s.items_precompilados} ítems ·{" "}
+            {s.mecanicas_disponibles}/{s.mecanicas_totales} mecánicas · grafo y
+            distractores precalculados
+          </p>
+        </div>
+        <a
+          href={`${backendUrl}/students/${studentId}/bundle`}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 rounded border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-300 hover:bg-indigo-500/20"
+        >
+          Ver JSON del paquete
+        </a>
+      </Card>
+
       <div>
         <SectionTitle>Qué puede medir tu plan</SectionTitle>
         <p className="mb-3 -mt-1 text-xs text-gray-500">
