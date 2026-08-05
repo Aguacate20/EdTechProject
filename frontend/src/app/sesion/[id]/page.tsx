@@ -485,9 +485,7 @@ function Resumen({
 
   useEffect(() => {
     fetch(`${backendUrl}/sessions/${id}/summary`)
-      .then((r) => r.json())
-      .then(setDatos)
-      .catch(() => setDatos({ error: true }));
+      .then((r) => r.json()).then(setDatos).catch(() => setDatos({ error: true }));
   }, [backendUrl, id]);
 
   if (!datos) {
@@ -499,6 +497,9 @@ function Resumen({
   }
 
   const conceptos = datos.conceptos ?? [];
+  const s = datos.resumen_sesion ?? {};
+  const trabajados = conceptos.filter((c: any) => (c.en_esta_sesion?.intentos ?? 0) > 0);
+  const calib = datos.calibracion ?? {};
 
   return (
     <main className="min-h-screen bg-[#0F0F13] text-white">
@@ -507,35 +508,95 @@ function Resumen({
           <p className="text-[11px] uppercase tracking-widest text-gray-500">
             Sesión de {datos.modo}
           </p>
-          <h1 className="mt-1 text-2xl font-semibold">Cómo vas</h1>
+          <h1 className="mt-1 text-2xl font-semibold">
+            {datos.modo === "evaluacion" ? "Resultado" : "Cómo te fue"}
+          </h1>
         </div>
 
-        <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
-          <p className="mb-3 text-xs uppercase tracking-wider text-gray-500">
-            Por concepto
-          </p>
-          <div className="space-y-2.5">
-            {conceptos.map((c: any) => (
-              <div key={c.concept_id} className="flex items-center gap-3">
-                <span className="w-52 shrink-0 truncate text-sm text-gray-300" title={c.titulo}>
-                  {c.titulo}
-                </span>
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-800">
-                  <div
-                    className={`h-full ${
-                      (c.recuperacion ?? 0) >= 0.7 ? "bg-emerald-400"
-                      : (c.recuperacion ?? 0) >= 0.4 ? "bg-amber-400" : "bg-rose-400"
-                    }`}
-                    style={{ width: `${Math.round((c.recuperacion ?? 0) * 100)}%` }}
-                  />
-                </div>
-                <span className="w-9 shrink-0 text-right font-mono text-[11px] text-gray-600">
-                  {c.recuperacion != null ? `${Math.round(c.recuperacion * 100)}%` : "—"}
-                </span>
-              </div>
-            ))}
-          </div>
+        {/* Lo que pasó en ESTA sesión. El resumen anterior mostraba solo el
+            perfil acumulado y salía en blanco si las señales no habían llegado
+            a la base: se terminaba una sesión completa y no se veía nada. */}
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            ["Ejercicios", s.intentos ?? 0],
+            [datos.modo === "evaluacion" ? "Aciertos" : "Bien a la primera", s.aciertos ?? 0],
+            ["Conceptos", s.conceptos_trabajados ?? 0],
+          ].map(([l, v]) => (
+            <div key={String(l)} className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+              <p className="font-mono text-2xl">{String(v)}</p>
+              <p className="mt-0.5 text-[11px] text-gray-500">{l}</p>
+            </div>
+          ))}
         </div>
+
+        {s.intentos === 0 && (
+          <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-4 text-sm text-amber-200">
+            No se registró ninguna respuesta en esta sesión. Si respondiste
+            ejercicios, algo falló al guardarlos: revisá{" "}
+            <span className="font-mono text-xs">/students/{studentId}/diagnostico</span>.
+          </div>
+        )}
+
+        {trabajados.length > 0 && (
+          <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+            <p className="mb-3 text-xs uppercase tracking-wider text-gray-500">
+              Por concepto
+            </p>
+            <div className="space-y-3">
+              {trabajados.map((c: any) => {
+                const e = c.en_esta_sesion;
+                const tasa = e.intentos ? e.aciertos / e.intentos : 0;
+                return (
+                  <div key={c.concept_id}>
+                    <div className="mb-1 flex flex-wrap items-baseline gap-2">
+                      <span className="text-sm text-gray-200">{c.titulo}</span>
+                      <span className="font-mono text-[11px] text-gray-600">
+                        {e.aciertos}/{e.intentos}
+                      </span>
+                      {e.mecanicas.length > 0 && (
+                        <span className="font-mono text-[11px] text-gray-700">
+                          {e.mecanicas.join(" ")}
+                        </span>
+                      )}
+                      {c.recuperacion != null && (
+                        <span className="ml-auto font-mono text-[11px] text-gray-500">
+                          acumulado {Math.round(c.recuperacion * 100)}%
+                        </span>
+                      )}
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-800">
+                      <div
+                        className={`h-full ${
+                          tasa >= 0.7 ? "bg-emerald-400"
+                          : tasa >= 0.4 ? "bg-amber-400" : "bg-rose-400"
+                        }`}
+                        style={{ width: `${Math.round(tasa * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {calib.n > 0 && (
+          <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+            <p className="mb-1 text-xs uppercase tracking-wider text-gray-500">
+              Qué tan bien te conocés
+            </p>
+            <p className="text-sm text-gray-300">
+              Sobre {calib.n} predicción(es), tu error medio fue de{" "}
+              <span className="font-mono text-white">
+                {Math.round((calib.error_medio ?? 0) * 100)}%
+              </span>
+              .{" "}
+              {(calib.error_medio ?? 0) < 0.2
+                ? "Predecís bien tu propio desempeño."
+                : "Hay distancia entre lo que creés saber y lo que te sale — eso también se entrena."}
+            </p>
+          </div>
+        )}
 
         {Object.keys(datos.repertorios_activos ?? {}).length > 0 && (
           <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-4">
@@ -544,27 +605,30 @@ function Resumen({
             </p>
             <p className="text-sm text-gray-300">
               Al equivocarte activaste {Object.keys(datos.repertorios_activos).length}{" "}
-              intuición(es) cotidiana(s). No son errores tontos: son ideas que funcionan
-              en otros contextos y que acá siguen otro criterio.
+              intuición(es) cotidiana(s). No son errores tontos: son ideas que
+              funcionan en otros contextos y que acá siguen otro criterio.
             </p>
           </div>
         )}
 
         {datos.peticiones_de_ayuda > 0 && (
           <p className="text-xs text-gray-500">
-            Pediste ayuda {datos.peticiones_de_ayuda} vez/veces. Eso no baja tu resultado:
-            solo hace que el sistema tenga menos certeza sobre esos puntos.
+            Pediste ayuda {datos.peticiones_de_ayuda} vez/veces. Eso no baja tu
+            resultado: solo hace que el sistema tenga menos certeza sobre esos puntos.
           </p>
         )}
 
-        <div className="flex gap-2">
-          <button
-            onClick={() => router.push(`/estudiante/${studentId}`)}
-            className="rounded bg-indigo-500 px-4 py-2 text-sm font-medium hover:bg-indigo-400"
-          >
-            Volver al perfil
-          </button>
-        </div>
+        <p className="text-xs text-gray-600">
+          {datos.n_senales_totales} señal(es) acumuladas en total. La próxima
+          sesión se arma con esto.
+        </p>
+
+        <button
+          onClick={() => router.push(`/estudiante/${studentId}`)}
+          className="rounded bg-indigo-500 px-4 py-2 text-sm font-medium hover:bg-indigo-400"
+        >
+          Volver al perfil
+        </button>
       </div>
     </main>
   );
