@@ -1,5 +1,5 @@
 """
-pipeline/validation.py — NUEVO en v2
+pipeline/validation.py — v2.2.4
 
 Validación y reparación del output del LLM contra el schema.
 
@@ -20,6 +20,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from pipeline.canonicalize import normalize_domain, strip_dangling_refs
 from models.materia_prima import (
     Concept,
     ConceptAxis,
@@ -113,6 +114,50 @@ def _prune_references(items: list[dict], field: str, valid_ids: set[str], label:
     return kept
 
 
+def _normalize_domains(cases: list[dict], scenarios: list[dict], report: dict) -> int:
+    """Unifica la escritura de los dominios ANTES de comparar distancias.
+
+    Sin esto, "interacción humano‑computadora" (guion no separable) y
+    "interacción humano-computadora" (guion normal) cuentan como dominios
+    distintos, y toda variante entre ellos se marca como transferencia lejana
+    sin serlo.
+    """
+    formas: dict[str, set[str]] = {}
+    for item in list(cases or []) + list(scenarios or []):
+        crudo = item.get("dominio")
+        if not crudo:
+            continue
+        canon = normalize_domain(crudo)
+        formas.setdefault(canon, set()).add(crudo)
+        item["dominio"] = canon
+    colisiones = {k: sorted(v) for k, v in formas.items() if len(v) > 1}
+    if colisiones:
+        report["dominios_unificados"] = colisiones
+    return len(colisiones)
+
+
+def _drop_self_distinctions(concepts: list[dict], report: dict) -> int:
+    """Un concepto no se distingue de sí mismo.
+
+    En la corrida medida dos conceptos se listaban a sí mismos con
+    `"difference": "N/A"`. Eso llega al generador de distractores como una
+    opción incorrecta sin contenido.
+    """
+    quitadas = 0
+    for c in concepts or []:
+        distinciones = c.get("distinctions") or []
+        limpias = [
+            d for d in distinciones
+            if d.get("from_concept") and d["from_concept"] != c.get("id")
+            and (d.get("difference") or "").strip().lower() not in {"", "n/a", "na", "-"}
+        ]
+        quitadas += len(distinciones) - len(limpias)
+        c["distinctions"] = limpias
+    if quitadas:
+        report["distinciones_autorreferentes_quitadas"] = quitadas
+    return quitadas
+
+
 def _fix_distances(scenarios: list[dict], cases_by_id: dict[str, dict], report: dict) -> list[dict]:
     """Recalcula `distancia` en vez de aceptar la declaración del LLM.
 
@@ -125,8 +170,8 @@ def _fix_distances(scenarios: list[dict], cases_by_id: dict[str, dict], report: 
         parent = cases_by_id.get(s.get("parent_case_id") or "")
         if not parent:
             continue
-        pdom = (parent.get("dominio") or "").strip().lower()
-        sdom = (s.get("dominio") or "").strip().lower()
+        pdom = normalize_domain(parent.get("dominio") or "")
+        sdom = normalize_domain(s.get("dominio") or "")
         declared = (s.get("distancia") or "cercana").strip().lower()
         valid = {d.value for d in TransferDistance}
         if pdom and sdom and pdom != sdom:
@@ -150,6 +195,9 @@ def validate_output(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
     """Valida el dict crudo del pipeline. Devuelve (output limpio, informe)."""
     report: dict[str, Any] = {}
 
+    _drop_self_distinctions(raw.get("concepts", []), report)
+    _normalize_domains(raw.get("cases", []), raw.get("scenarios", []), report)
+
     concepts = _validate_list(raw.get("concepts", []), Concept, "concepts", report)
     valid_ids = {c.id for c in concepts}
     report["concepts_valid"] = len(concepts)
@@ -166,8 +214,16 @@ def validate_output(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
     ]
     repertoires = _validate_list(repertoires_raw, CommonRepertoire, "repertoires", report)
 
-    frameworks = _validate_list(raw.get("frameworks", []), Framework, "frameworks", report)
+    frameworks_raw = raw.get("frameworks", [])
+    fw_ids_raw = {f.get("id") for f in frameworks_raw}
+    huerfanos = strip_dangling_refs(frameworks_raw, ["rivales"], fw_ids_raw)
+    if huerfanos:
+        report["rivales_huerfanos_quitados"] = huerfanos
+    frameworks = _validate_list(frameworks_raw, Framework, "frameworks", report)
     framework_ids = {f.id for f in frameworks}
+    # Segunda pasada: los marcos descartados por validación dejan más huérfanos.
+    frameworks_dump = [f.model_dump(mode="json") for f in frameworks]
+    strip_dangling_refs(frameworks_dump, ["rivales"], framework_ids)
 
     theses_raw = _prune_references(raw.get("theses", []), "concept_ids", valid_ids, "theses", report)
     for t in theses_raw:
@@ -197,7 +253,7 @@ def validate_output(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
         "concepts": [c.model_dump(mode="json") for c in concepts],
         "relations": [r.model_dump(mode="json") for r in relations],
         "repertoires": [r.model_dump(mode="json") for r in repertoires],
-        "frameworks": [f.model_dump(mode="json") for f in frameworks],
+        "frameworks": frameworks_dump,
         "theses": [t.model_dump(mode="json") for t in theses],
         "cases": [c.model_dump(mode="json") for c in cases],
         "scenarios": [s.model_dump(mode="json") for s in scenarios],
@@ -206,6 +262,13 @@ def validate_output(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
     })
 
     # Umbral de confianza: se cuenta sobre float, no sobre etiqueta.
+    # `status: borrador` en todo lo que el profesor debe aprobar. En v2.2.3 solo
+    # lo llevaban los repertorios, así que no se podía condicionar la publicación
+    # del resto del material a la revisión docente.
+    for key in ("concepts", "relations", "frameworks", "theses", "cases", "scenarios", "axes"):
+        for item in clean.get(key, []):
+            item.setdefault("status", "borrador")
+
     clean["low_confidence_count"] = sum(
         1 for c in concepts if c.confidence_extraction < 0.5
     ) + sum(

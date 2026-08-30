@@ -1,5 +1,5 @@
 """
-pipeline/prompts/layer2_relations.py — v2
+pipeline/prompts/layer2_relations.py — v3.5
 
 Cambios respecto a v1:
   · Tipología de 5 a 9 tipos. La reducción tenía efectos que no se veían:
@@ -10,6 +10,16 @@ Cambios respecto a v1:
     y se acumulaban sin merge, produciendo N juegos solapados. Ahora se calculan
     algorítmicamente en graph_utils.compute_clusters.
   · confidence_extraction como float.
+
+Cambios en v3.5:
+  · Se emiten también las relaciones INFERIDAS, con confianza baja, en vez de
+    callarlas. La regla anterior decía "no fuerces relaciones" y a la vez pedía
+    marcar las inferidas con confianza < 0.5: el modelo obedecía la primera y
+    la segunda no se usaba nunca. El resultado era silencio donde podía haber
+    un dato aproximado, y el consumidor puede filtrar por umbral cuando quiera.
+  · Un mismo par puede llevar VARIOS tipos. Que A extienda a B y a la vez lo
+    requiera son dos hechos ciertos, no un conflicto; obligar a elegir uno hacía
+    que el compilador decidiera por el juego cuál era "el verdadero".
 """
 
 SYSTEM_PROMPT = """Eres un experto en análisis de estructuras conceptuales académicas.
@@ -29,10 +39,27 @@ TIPOS VÁLIDOS Y SU SEMÁNTICA (A = from, B = to):
 REGLAS:
 - La dirección importa: 'A requiere B' y 'B requiere A' son afirmaciones distintas.
 - Distingue 'causa' de 'apoya': causa es una relación del mundo, apoya es del argumento.
-- No fuerces relaciones. Un grafo con pocas aristas correctas vale más que uno denso e inventado.
 - Usa exclusivamente los IDs de conceptos que se te dan. No inventes IDs.
-- 'confidence_extraction' entre 0.0 y 1.0. Usa < 0.5 si la relación es inferida
-  y no está afirmada en el texto.
+
+UN PAR PUEDE TENER VARIOS TIPOS. Si entre dos conceptos hay más de una relación
+cierta, emítelas TODAS como entradas separadas. Que A extienda a B y a la vez lo
+requiera son dos hechos distintos sobre el mismo par, no una contradicción, y
+elegir uno solo pierde información. Lo único que no puede coexistir es una
+afirmación con su negación: 'apoya' y 'contradice' sobre el mismo par.
+
+EMITE TAMBIÉN LO QUE INFIERES, marcándolo. No te calles una relación por no
+estar seguro: márcala con confianza baja y quien la use decidirá si le sirve.
+- 1.0 a 0.8  el texto la afirma explícitamente
+- 0.7 a 0.6  el texto la implica con claridad aunque no la enuncie
+- 0.5 a 0.3  la infieres del sentido de los conceptos, el texto no la trata
+- por debajo de 0.3 no la emitas: eso ya es inventar
+
+'description' debe MENCIONAR LOS DOS CONCEPTOS por su nombre. Una descripción
+que solo habla de uno produce retroalimentación confusa: el estudiante lee sobre
+un concepto cuando la pregunta era sobre la relación entre dos.
+- Mal:  "extiende el concepto de apego digital"
+- Bien: "el apego digital extiende la teoría del apego al vínculo con sistemas de IA"
+
 - Responde SOLO con JSON válido. Sin explicaciones ni markdown."""
 
 USER_PROMPT_TEMPLATE = """Texto:
@@ -48,7 +75,7 @@ Formato JSON exacto:
       "from_concept_id": "string",
       "to_concept_id": "string",
       "relation_type": "apoya|contradice|matiza|extiende|requiere|causa|ejemplifica|generaliza|contrasta",
-      "description": "string (qué dice el texto que sostiene esta relación)",
+      "description": "string (qué sostiene esta relación, NOMBRANDO ambos conceptos)",
       "bidirectional": false,
       "confidence_extraction": 0.0
     }}

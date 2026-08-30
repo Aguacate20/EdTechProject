@@ -1,5 +1,5 @@
 """
-pipeline/coverage.py — NUEVO en v2
+pipeline/coverage.py — v2.2.4
 
 Cálculo de la capa 6: densidades reales, cobertura de señal y disponibilidad
 de familias de mecánicas.
@@ -95,10 +95,21 @@ def compute_signal_coverage(data: dict) -> list[dict]:
         "Pocos conceptos atómicos o sin sinónimos: A1 y A3 no pueden generar ítems "
         "rápidos y calificables, que es lo que la latencia necesita para ser interpretable.")
 
-    # Las dimensiones de proceso no dependen del contenido extraído.
-    for dim in ("calibracion", "srl_planeacion", "srl_accion", "srl_autorreflexion",
+    # Las dimensiones de proceso no dependen del contenido extraído...
+    for dim in ("calibracion", "srl_accion", "srl_autorreflexion",
                 "persistencia", "engagement"):
         add(dim, 1.0)
+
+    # ...salvo planeación, que sí depende. Elegir qué estudiar y en qué orden
+    # solo es evaluable si existe un orden con sentido contra el que comparar.
+    # Con un grafo de prerrequisitos casi vacío, la secuencia sugerida es
+    # alfabética y declararla al 100% sería mentir sobre lo que se puede medir.
+    calidad = data.get("_sequence_quality") or {}
+    nivel = calidad.get("nivel", "buena")
+    cobertura_plan = {"buena": 1.0, "parcial": 0.5, "no_confiable": 0.15}.get(nivel, 1.0)
+    add("srl_planeacion", cobertura_plan,
+        calidad.get("motivo") or
+        "El grafo de prerrequisitos es demasiado escaso para ordenar el curso.")
 
     # Articulación depende de que haya objetos sobre los que producir.
     add("articulacion", min(1.0, 0.4 + 0.6 * _ratio(len(theses) + len(cases), n * 0.8)),

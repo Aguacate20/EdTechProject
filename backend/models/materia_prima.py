@@ -113,12 +113,44 @@ class ConceptDistinction(BaseModel):
     difference: str
 
 
+class CargaCognitiva(str, Enum):
+    """Por qué cuesta un concepto, no cuánto.
+
+    Determina qué familia de ejercicio corresponde: no es lo mismo un concepto
+    que cuesta porque hay mucho que retener que uno que cuesta porque se
+    confunde con su vecino.
+    """
+    MEMORIZAR = "memorizar"
+    DISCRIMINAR = "discriminar"
+    INTEGRAR = "integrar"
+    INFERIR = "inferir"
+
+
+CARGAS_VALIDAS = {c.value for c in CargaCognitiva}
+
+# Traducciones de lo que el modelo suele devolver en lugar de los cuatro
+# valores previstos. Se aceptan porque describen lo mismo con otra palabra;
+# cualquier otra cosa se descarta sin tocar el concepto.
+_ALIAS_CARGA = {
+    "memoria": "memorizar", "memorization": "memorizar", "retener": "memorizar",
+    "discriminacion": "discriminar", "distinguir": "discriminar",
+    "integracion": "integrar", "sintetizar": "integrar",
+    "inferencia": "inferir", "aplicar": "inferir", "deducir": "inferir",
+    "conceptual": "integrar", "procedimental": "inferir",
+}
+
+
 class Concept(_ConfidenceMixin):
     id: str
     title: str
     definition: str
     tipo: ConceptType = ConceptType.TEORICO
     difficulty: DifficultyLevel = DifficultyLevel.INTERMEDIO
+    # El prompt pedía este campo desde v2.4 y el LLM lo devolvía, pero el modelo
+    # no lo declaraba: `model_dump()` descarta los campos desconocidos en
+    # silencio, así que llegaba vacío a los 29 conceptos. Un campo que el prompt
+    # pide y el schema no declara se pierde sin dejar rastro en ningún log.
+    carga_cognitiva: list[str] = Field(default_factory=list)
     importance: float = Field(0.5, ge=0, le=1)
     is_gateway: bool = False
     is_threshold: bool = False
@@ -129,6 +161,30 @@ class Concept(_ConfidenceMixin):
     sinonimos: list[str] = Field(default_factory=list)
     variantes_terminologicas: list[str] = Field(default_factory=list)
 
+    @field_validator("carga_cognitiva", mode="before")
+    @classmethod
+    def _limpiar_carga(cls, v):
+        """Descarta los valores desconocidos SIN descartar el concepto.
+
+        Con un enum estricto, un valor inesperado —"conceptual", "aplicación",
+        cualquier variante que el modelo invente— hacía fallar la validación del
+        concepto COMPLETO. Cambiar un campo que se perdía en silencio por uno
+        que puede tirar conceptos enteros es peor que el problema original.
+
+        Se traducen los sinónimos frecuentes y se ignora el resto.
+        """
+        if not v:
+            return []
+        if isinstance(v, str):
+            v = [v]
+        salida = []
+        for x in v:
+            clave = str(x).strip().lower()
+            clave = _ALIAS_CARGA.get(clave, clave)
+            if clave in CARGAS_VALIDAS and clave not in salida:
+                salida.append(clave)
+        return salida
+
     # Enriquecimiento (paso 2.5)
     core_definition: Optional[str] = None
     subdimensions: list[ConceptDimension] = Field(default_factory=list)
@@ -138,6 +194,12 @@ class Concept(_ConfidenceMixin):
     key_tensions: list[str] = Field(default_factory=list)
     evolution_in_paper: Optional[str] = None
     is_enriched: bool = False
+    # Añadidos por el verificador de anclaje y por la validación. Mismo motivo:
+    # sin declararlos aquí, se pierden al serializar.
+    anclaje_textual: Optional[str] = None
+    similitud_cita: Optional[float] = None
+    evidencia_textual: Optional[str] = None
+    status: str = "borrador"
 
 
 # ─────────────────────────────────────────────

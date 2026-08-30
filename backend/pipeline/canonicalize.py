@@ -1,5 +1,5 @@
 """
-pipeline/canonicalize.py — v2.2
+pipeline/canonicalize.py — v2.2.4
 
 Consolidación de conceptos duplicados.
 
@@ -263,6 +263,57 @@ def deterministic_pass(
     return merged, id_map, report, oversized
 
 
+def acronym_candidates(concepts: list[dict]) -> list[list[dict]]:
+    """Agrupa los conceptos que declaran la MISMA sigla.
+
+    Este agrupamiento existe por un fallo medido. La fusión automática se niega
+    a unir dos conceptos que reclaman la misma sigla si sus títulos base
+    difieren —es la protección que impide fundir EVI con PCCI— y deja el caso
+    para adjudicación. Pero la adjudicación agrupaba por tokens compartidos del
+    título, y `Epistemic Vigilance Index (EVI)` con `Índice de Vigilancia
+    Epistémica (EVI)` no comparten NINGÚN token: uno está en inglés y otro en
+    español. Nunca llegaban a la misma tanda, así que nadie los resolvía.
+
+    Resultado en la corrida real: EVI, EDS, IRM y RAF quedaron duplicados, y
+    eran exactamente las cuatro siglas marcadas como ambiguas.
+
+    La sigla es una señal mucho más fuerte que el vocabulario compartido, y es
+    inmune al idioma. Estos grupos van primero a adjudicación.
+    """
+    by_acronym: dict[str, list[int]] = defaultdict(list)
+    for i, concept in enumerate(concepts):
+        title = concept.get("title") or ""
+        _, acronym = _parenthetical(title)
+        claves = set()
+        if acronym:
+            claves.add(normalize(acronym))
+        # Un título que ES la sigla suelta ('RAF', 'PCCI') también cuenta.
+        norm = normalize(title)
+        if norm and " " not in norm and len(norm) <= 8:
+            claves.add(norm)
+        # Y una sigla declarada como sinónimo, que es donde el modelo suele
+        # dejarla cuando el título va en el otro idioma.
+        for alias in (concept.get("sinonimos") or []):
+            alias = str(alias).strip()
+            if 2 <= len(alias) <= 8 and alias.isupper():
+                claves.add(normalize(alias))
+        for clave in claves:
+            if clave:
+                by_acronym[clave].append(i)
+
+    groups: list[list[int]] = []
+    vistos: set[tuple] = set()
+    for _, members in sorted(by_acronym.items(), key=lambda kv: -len(kv[1])):
+        if not (2 <= len(members) <= 6):
+            continue
+        key = tuple(sorted(members))
+        if key in vistos:
+            continue
+        vistos.add(key)
+        groups.append(list(members))
+    return [[concepts[i] for i in group] for group in groups]
+
+
 def similarity_candidates(
     concepts: list[dict], max_groups: int = 25
 ) -> list[list[dict]]:
@@ -286,6 +337,19 @@ def similarity_candidates(
         if len(groups) >= max_groups:
             break
     return [[concepts[i] for i in group] for group in groups]
+
+
+def dedupe_group_list(groups: list[list[dict]]) -> list[list[dict]]:
+    """Quita grupos repetidos o contenidos en otro, preservando el orden."""
+    salida: list[list[dict]] = []
+    firmas: list[set[str]] = []
+    for group in groups:
+        ids = {c.get("id", "") for c in group}
+        if any(ids <= previa for previa in firmas):
+            continue
+        salida.append(group)
+        firmas.append(ids)
+    return salida
 
 
 def apply_llm_decisions(
@@ -314,6 +378,12 @@ def apply_llm_decisions(
         winner = _merge_group(group)
         if decision.get("title"):
             winner["title"] = decision["title"]
+        # El ganador de _merge_group puede ser cualquiera del grupo, así que su
+        # `id` puede no coincidir con la clave canónica. En la corrida medida eso
+        # dejó un concepto guardado bajo la clave `parasocial_co_creation_index_pcci`
+        # cuyo campo id decía `parasocial_co_creation`: el id_map apuntaba a un id
+        # inexistente en la salida.
+        winner["id"] = canonical
         by_id[canonical] = winner
         for concept in group[1:]:
             cid = concept.get("id")
@@ -340,3 +410,183 @@ def remap_ids(items: list[dict], id_map: dict[str, str], fields: list[str]) -> l
             elif isinstance(value, list):
                 item[field] = [id_map.get(v, v) for v in value]
     return items
+
+
+def _tokens(text: str) -> set[str]:
+    return {tok for tok in normalize(text).split() if len(tok) >= 4}
+
+
+def dedupe_by_text(
+    items: list[dict],
+    text_fields: list[str],
+    threshold: float = 0.75,
+    min_tokens: int = 4,
+    merge_lists: tuple[str, ...] = (),
+    max_items: int | None = None,
+    score_key=None,
+) -> tuple[list[dict], int]:
+    """Unifica items que dicen esencialmente lo mismo, aunque tengan ids distintos.
+
+    Nace de un problema medido: la capa 4 corre por lotes y el tope de tesis del
+    prompt es POR LOTE, así que con nueve lotes salieron 34 tesis y 20 marcos
+    para un paper de doce páginas. El dedup por id no ayuda, porque dos
+    fragmentos que hablan de la misma tesis la nombran distinto.
+
+    Se comparan los tokens significativos del enunciado con índice de Jaccard.
+    Cuando dos items se parecen por encima del umbral, se conserva el mejor y se
+    fusionan sus listas (argumentos a favor, en contra, criterios).
+
+    El umbral es alto a propósito. Dos formulaciones de la misma tesis puntúan
+    entre 0.8 y 1.0 porque son reordenamientos del mismo enunciado; dos tesis
+    distintas sobre los mismos conceptos comparten vocabulario sin llegar ahí.
+    Bajarlo a 0.6 en pruebas fusionaba afirmaciones que no decían lo mismo, y
+    ese error es peor que dejar un duplicado: borra una posición defendible.
+
+    Los enunciados con menos de `min_tokens` palabras distintivas no se unifican
+    POR PARECIDO, pero sí por coincidencia exacta normalizada.
+
+    Esa distinción es el arreglo de v2.2.4. En la corrida medida salieron tres
+    marcos con la etiqueta IDÉNTICA "Resonant Amplification Framework (RAF)" y
+    ninguno se unió: esa etiqueta produce solo tres tokens de cuatro o más
+    caracteres (resonant, amplification, framework), quedaba por debajo de
+    `min_tokens` y se saltaba el dedup entero. La guarda que existía para no
+    fusionar enunciados cortos ambiguos terminó desactivando la unificación de
+    marcos por completo, porque los nombres de marco son cortos por naturaleza.
+
+    Ahora una coincidencia exacta de la forma normalizada siempre unifica: dos
+    etiquetas idénticas no son un caso dudoso.
+
+    Devuelve (items, cuántos se descartaron).
+    """
+    if not items:
+        return [], 0
+
+    def texto(item: dict) -> str:
+        return " ".join(str(item.get(f) or "") for f in text_fields)
+
+    ordenados = sorted(items, key=score_key, reverse=True) if score_key else list(items)
+
+    conservados: list[dict] = []
+    firmas: list[set[str]] = []
+    exactas: list[str] = []
+    fusionados = 0
+
+    for item in ordenados:
+        crudo = normalize(texto(item))
+        firma = _tokens(texto(item))
+        encontrado = None
+
+        # Coincidencia exacta: unifica siempre, sin importar la longitud.
+        if crudo:
+            for i, previo in enumerate(exactas):
+                if previo and previo == crudo:
+                    encontrado = i
+                    break
+
+        # Parecido: solo con suficiente texto para decidir con criterio.
+        if encontrado is None and len(firma) >= min_tokens:
+            for i, previa in enumerate(firmas):
+                if len(previa) < min_tokens:
+                    continue
+                union = firma | previa
+                if not union:
+                    continue
+                if len(firma & previa) / len(union) >= threshold:
+                    encontrado = i
+                    break
+
+        if encontrado is None:
+            conservados.append(dict(item))
+            firmas.append(firma)
+            exactas.append(crudo)
+            continue
+
+        destino = conservados[encontrado]
+        # Quien absorbe hereda el id: cualquier referencia al id absorbido
+        # tiene que poder reescribirse. Sin esto, al unir tres marcos RAF los
+        # rivales de los otros marcos seguían apuntando al id que desapareció.
+        alias = item.get("id")
+        if alias and alias != destino.get("id"):
+            destino.setdefault("_alias_ids", []).append(alias)
+        for campo in merge_lists:
+            existentes = list(destino.get(campo) or [])
+            vistos = {normalize(str(v)) for v in existentes}
+            for valor in (item.get(campo) or []):
+                if normalize(str(valor)) not in vistos:
+                    existentes.append(valor)
+                    vistos.add(normalize(str(valor)))
+            destino[campo] = existentes
+        firmas[encontrado] = firmas[encontrado] | firma
+        fusionados += 1
+
+    # Reescribir las referencias cruzadas hacia los ids que sobrevivieron.
+    remap: dict[str, str] = {}
+    for item in conservados:
+        for alias in item.pop("_alias_ids", []):
+            remap[alias] = item.get("id")
+    if remap:
+        for item in conservados:
+            for campo in merge_lists:
+                valor = item.get(campo)
+                if isinstance(valor, list):
+                    vistos, nuevo = set(), []
+                    for v in valor:
+                        destino_id = remap.get(v, v)
+                        if destino_id != item.get("id") and destino_id not in vistos:
+                            vistos.add(destino_id)
+                            nuevo.append(destino_id)
+                    item[campo] = nuevo
+
+    descartados = fusionados
+    if max_items is not None and len(conservados) > max_items:
+        descartados += len(conservados) - max_items
+        conservados = conservados[:max_items]
+
+    return conservados, descartados
+
+
+def strip_dangling_refs(
+    items: list[dict],
+    fields: list[str],
+    valid_ids: set[str],
+) -> int:
+    """Quita referencias a ids inexistentes. Devuelve cuántas quitó.
+
+    Nace de un defecto medido: un marco declaraba tres rivales
+    (`framework_relational_hci`, `framework_third_wave_hci`, `framework_casa`)
+    que no existen en ninguna parte del documento. La capa 4 corre por lotes,
+    cada lote inventa ids que otro lote no produjo, y después el tope global
+    descarta marcos dejando más referencias huérfanas.
+
+    Un consumidor que elija pares de marcos rivales para una actividad de debate
+    recibiría un marco enfrentado a un id inexistente.
+    """
+    quitadas = 0
+    for item in items or []:
+        for field in fields:
+            valor = item.get(field)
+            if not isinstance(valor, list):
+                continue
+            limpio = [v for v in valor if v in valid_ids and v != item.get("id")]
+            quitadas += len(valor) - len(limpio)
+            item[field] = limpio
+    return quitadas
+
+
+def normalize_domain(text: str) -> str:
+    """Forma canónica de un dominio, para poder compararlos de verdad.
+
+    En la corrida medida convivían "interacción humano‑computadora" con guion no
+    separable (U+2011) y "interacción humano-computadora" con guion normal
+    (U+002D). Se ven iguales y no lo son. La verificación de distancia de
+    transferencia compara dominios, así que las etiquetas cercana/media/lejana
+    se calculaban contra cadenas que solo parecían coincidir.
+    """
+    if not text:
+        return ""
+    limpio = unicodedata.normalize("NFKC", str(text))
+    for guion in ("\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2212"):
+        limpio = limpio.replace(guion, "-")
+    limpio = limpio.replace("\u00a0", " ")
+    limpio = " ".join(limpio.split()).strip(" .,;:")
+    return limpio.lower()

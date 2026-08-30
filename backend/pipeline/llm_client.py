@@ -1,5 +1,5 @@
 """
-pipeline/llm_client.py — v2.2
+pipeline/llm_client.py — v2.2.2
 
 Cliente que enruta cada llamada a través del pool de modelos.
 
@@ -261,11 +261,41 @@ async def _call_claude(
             dict(response.headers))
 
 
+# "Current length is 9689 while limit is 8192" y variantes de otros proveedores.
+_CONTEXT_LIMIT_PATTERNS = [
+    re.compile(r"limit is\s+(\d{3,7})", re.I),
+    re.compile(r"maximum context length is\s+(\d{3,7})", re.I),
+    re.compile(r"context[_ ]length[^0-9]{0,40}?(\d{3,7})", re.I),
+]
+
+
+def _parse_context_limit(body: str) -> int | None:
+    for pattern in _CONTEXT_LIMIT_PATTERNS:
+        match = pattern.search(body)
+        if match:
+            try:
+                return int(match.group(1))
+            except ValueError:
+                continue
+    return None
+
+
 def _handle_status_error(entry: dict, e: httpx.HTTPStatusError) -> None:
     status = e.response.status_code
     pool = get_pool()
     if status == 400:
         body = e.response.text or ""
+        # Rechazo por ventana de contexto. El proveedor informa su límite real
+        # en el mensaje, así que se aprende y se prueba con otro modelo en vez
+        # de dar la capa por perdida.
+        if "context_length_exceeded" in body or "reduce the length" in body.lower():
+            limite = _parse_context_limit(body)
+            if limite:
+                pool.learn_context_limit(entry["key"], limite)
+            raise LLMRetryable(
+                f"Ventana de contexto excedida en {entry['key']}"
+                + (f" (límite real {limite})" if limite else "")
+            ) from e
         if "max_completion_tokens" in body or "max_tokens" in body:
             _flip_token_param(entry)
             raise LLMRetryable(

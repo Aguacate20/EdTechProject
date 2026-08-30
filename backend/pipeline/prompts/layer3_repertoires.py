@@ -1,5 +1,5 @@
 """
-pipeline/prompts/layer3_repertoires.py — v2
+pipeline/prompts/layer3_repertoires.py — v2.9
 
 Cambios respecto a v1: se agregan los tres campos que el Contextualizador
 (rol 4) necesita para producir feedback de coexistencia en vez de corrección.
@@ -17,6 +17,21 @@ SYSTEM_PROMPT = """Eres un experto en psicología del aprendizaje y cambio conce
 Identifica los repertorios cotidianos (intuiciones previas) que pueden interferir
 con el aprendizaje de estos conceptos.
 
+COBERTURA ESPERADA: apunta a UNA intuición por cada concepto que la admita.
+En la última corrida salieron 3 para 29 conceptos, y esta es la capa más
+valiosa de todo el material: es la que permite responder un error con "eso
+funciona en otros contextos, acá el criterio es otro" en vez de "está mal".
+Tres intuiciones para veintinueve conceptos deja el resto sin nada que decir.
+
+No fuerces una intuición donde no la hay —un concepto puramente técnico puede
+no tener versión cotidiana— pero recorré la lista completa antes de decidir que
+no aplica. Las fuentes de intuición más frecuentes, por si ayudan a buscar:
+  · el término técnico coincide con una palabra del habla común con otro sentido
+  · el concepto contradice algo que la experiencia diaria sugiere
+  · el fenómeno tiene una explicación popular más simple y plausible
+  · se confunde con otro concepto del mismo curso que suena parecido
+  · el sentido común invierte la dirección de la causa
+
 PRINCIPIO: un repertorio cotidiano NO es un error. Es conocimiento que funciona
 en su contexto de origen y deja de funcionar en el contexto científico. Tu tarea
 es describir ambos contextos, no descalificar el primero.
@@ -26,9 +41,19 @@ REGLAS:
   no ha estudiado el tema. Debe ser una explicación empática y real, no un
   diagnóstico de error.
 - 'contexto_donde_funciona': situaciones concretas en las que esta intuición
-  produce predicciones acertadas.
-- 'contraste_cientifico': qué distingue exactamente al concepto científico de la
-  intuición. Debe nombrar el criterio que cambia, no solo decir que difieren.
+  produce predicciones ACERTADAS. No escribas "en contextos cotidianos": nombra
+  una situación real donde alguien que piense así acierte.
+- 'contraste_cientifico': ES EL CAMPO MÁS IMPORTANTE y no puede quedar vacío ni
+  resolverse en una frase genérica. Debe nombrar EL CRITERIO CONCRETO que cambia
+  entre la intuición y el concepto científico.
+  Mal: "la teoría lo explica de forma más precisa" (no dice qué cambia).
+  Mal: "es una simplificación" (no dice de qué).
+  Bien: "la intuición atribuye el efecto a la repetición del mensaje; el marco
+  lo atribuye a quién es percibido como autor de la interpretación. El criterio
+  que cambia es la fuente de autoridad, no la frecuencia."
+  Escribe dos o tres frases. De este campo sale, palabra por palabra, la
+  explicación que recibe el estudiante cuando se equivoca: sin él el sistema
+  puede detectar la confusión pero no responderla.
 - 'concepto_confundido': si la intuición consiste en confundir este concepto con
   otro concepto del curso, pon el id de ese otro concepto. Si no, null.
 - 'documentado_en_corpus': el texto menciona explícitamente la confusión.
