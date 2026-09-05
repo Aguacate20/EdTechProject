@@ -41,6 +41,20 @@ REGLAS:
 - Distingue 'causa' de 'apoya': causa es una relación del mundo, apoya es del argumento.
 - Usa exclusivamente los IDs de conceptos que se te dan. No inventes IDs.
 
+RELACIONA LOS CONCEPTOS ENTRE SÍ. Si el documento estudia un objeto concreto
+(una obra, un caso, una empresa) y ese objeto aparece en la lista, no lo uses
+como extremo de cada relación: "la obra apoya la crítica social", "la obra
+extiende el simbolismo", "la obra causa impacto cultural" dicen todas lo
+mismo (que el texto habla de la obra) y dejan a los conceptos sin conectar.
+La relación que enseña está ENTRE los conceptos, y el objeto es donde ocurre:
+  mal:  obra --apoya--> critica_social ; obra --apoya--> conciencia_politica
+  bien: critica_social --causa--> conciencia_politica
+        (description: "En la obra, la crítica social que ... despierta la
+        conciencia política de los lectores porque ...")
+Como mínimo, la mitad de las relaciones que emitas deben unir dos conceptos
+que no sean el objeto de estudio. Las tesis y los marcos del texto suelen
+enunciar esas relaciones con todas las letras: búscalas ahí.
+
 UN PAR PUEDE TENER VARIOS TIPOS. Si entre dos conceptos hay más de una relación
 cierta, emítelas TODAS como entradas separadas. Que A extienda a B y a la vez lo
 requiera son dos hechos distintos sobre el mismo par, no una contradicción, y

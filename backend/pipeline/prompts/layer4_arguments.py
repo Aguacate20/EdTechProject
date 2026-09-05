@@ -32,6 +32,13 @@ REGLAS:
 - 'criterios_refutacion_valida': qué tendría que mostrar una refutación legítima.
   Estos dos campos se usan como rúbrica, así que sé específico y operativo.
 - 'concept_ids': todos los conceptos que la tesis involucra, no solo el principal.
+- 'criterios_conceptos' y 'contraargumentos_conceptos': para cada criterio de
+  refutación y cada contraargumento, EN EL MISMO ORDEN, la lista de IDs de los
+  conceptos que ese texto invoca (los que pone a prueba o de los que habla).
+  Un contraargumento como "no todos los lectores jóvenes internalizan los
+  mensajes críticos" invoca literatura_juvenil, critica_social y empoderamiento.
+  Con esto el juego puede juzgar cuando el estudiante enlaza una objeción con
+  un marco o con un concepto; sin esto, esa jugada vale cero.
 - Máximo 6 tesis y 4 marcos en total. Prefiere pocas y buenas.
 - Si el texto es puramente expositivo y no hay debate, devuelve listas vacías.
   Es una respuesta válida y preferible a inventar controversia.
@@ -71,6 +78,8 @@ Formato JSON exacto:
       "counterarguments": ["string"],
       "criterios_defensa_valida": ["string"],
       "criterios_refutacion_valida": ["string"],
+      "criterios_conceptos": [["string"]],
+      "contraargumentos_conceptos": [["string"]],
       "theoretical_source": "string|null",
       "confidence_extraction": 0.0
     }}

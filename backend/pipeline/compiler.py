@@ -356,6 +356,7 @@ def _build_distractors(concepts: list[dict], repertoires: list[dict],
     lo elige; uno con `concepto_confundido` permite emitir relación sobre la
     arista. Un distractor sin caracterizar solo dice "se equivocó".
     """
+    uso_vecino: dict[str, int] = {}
     by_id = {c["id"]: c for c in concepts}
     reps_por_concepto: dict[str, list[dict]] = defaultdict(list)
     for r in repertoires or []:
@@ -416,6 +417,13 @@ def _build_distractors(concepts: list[dict], repertoires: list[dict],
         for otro in sorted(vecinos.get(cid, set())):
             if otro in vistos or len(pool) >= 6:
                 continue
+            # Un mismo vecino no sirve de distractor para más de tres conceptos.
+            # En un grafo en estrella el eje era distractor de 6 de 9 conceptos
+            # y el estudiante aprendía a descartarlo de memoria: ya no discrimina
+            # nada. (v3.8; `uso_vecino` se lleva a nivel de función.)
+            if uso_vecino.get(otro, 0) >= 3:
+                continue
+            uso_vecino[otro] = uso_vecino.get(otro, 0) + 1
             vistos.add(otro)
             # Los distractores por vecindad no traen explicación de la
             # diferencia, y sin ella la promesa de devolver respeto en el fallo
@@ -1376,6 +1384,7 @@ def compile_bundle(data: dict, permitir_juez: bool = True,
             "theses": data.get("theses", []) or [],
             "frameworks": data.get("frameworks", []) or [],
         },
+        "objeto_de_estudio": data.get("objeto_de_estudio"),
         "stats": {
             "conceptos": len(concepts_idx),
             "aristas": len(relations),

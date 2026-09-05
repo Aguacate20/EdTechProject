@@ -41,6 +41,19 @@ QUÉ CUENTA COMO CONCEPTO:
 - Algo que se puede definir en una oración y que reaparece en el texto.
 - Prueba: ¿un examen podría pedir "explica X"? Si no, no es un concepto.
 
+EL OBJETO DE ESTUDIO NO ES UN CONCEPTO. Si el documento analiza UNA obra, UN
+caso, UNA empresa, UN dataset o UN evento concreto (una novela, una sentencia,
+una campaña, un experimento), eso es el material sobre el que el texto piensa,
+no una idea que se explique. "Explica Los Juegos del Hambre" no es una pregunta
+de examen; "explica cómo la distopía funciona como crítica social" sí. Cuando
+lo conviertes en concepto, todo el grafo cuelga de él como una estrella y las
+ideas del texto quedan sin relación entre sí. Regla:
+- No emitas el objeto de estudio como concepto. Emítelo una sola vez en el
+  campo 'objeto_de_estudio' del resultado (title + una línea), para que las
+  capas siguientes lo usen como caso y como contexto de los ejemplos.
+- Los conceptos son las ideas con las que el texto lo analiza (los métodos,
+  las categorías, los efectos, las tensiones), y se relacionan ENTRE SÍ.
+
 ANCLAJE OBLIGATORIO:
 - 'evidencia_textual': COPIA LITERAL de una frase del fragmento donde el
   concepto aparece. Entre 10 y 40 palabras, copiada carácter por carácter.
@@ -118,6 +131,7 @@ USER_PROMPT_TEMPLATE = """Texto (sección: {section_title}, páginas {pages}):
 
 Formato JSON exacto:
 {{
+  "objeto_de_estudio": {"title": "string | null", "descripcion": "string | null"},
   "concepts": [
     {{
       "id": "string",

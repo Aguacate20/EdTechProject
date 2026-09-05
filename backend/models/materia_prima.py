@@ -308,7 +308,11 @@ class Thesis(_ConfidenceMixin):
     criterios_defensa_valida: list[str] = Field(default_factory=list)
     criterios_refutacion_valida: list[str] = Field(default_factory=list)
     theoretical_source: Optional[str] = None
-
+    # v3.8: qué conceptos invoca cada criterio de refutación / contraargumento,
+    # alineados por índice con `criterios_refutacion_valida` y `counterarguments`.
+    # Con ellos el juego juzga objeción↔marco y objeción↔concepto.
+    criterios_conceptos: list[list[str]] = Field(default_factory=list)
+    contraargumentos_conceptos: list[list[str]] = Field(default_factory=list)
 
 # ─────────────────────────────────────────────
 # Capa 5 — Evidencia y casos
@@ -424,6 +428,9 @@ class MateriaPrimaOutput(BaseModel):
     schema_version: str = "2.0.0"
 
     concepts: list[Concept] = Field(default_factory=list)
+    # v3.8: la obra / el caso / la empresa que el documento estudia. No es un
+    # concepto: es el material sobre el que el texto piensa.
+    objeto_de_estudio: Optional[dict] = None
     relations: list[ConceptRelation] = Field(default_factory=list)
     clusters: list[ConceptCluster] = Field(default_factory=list)
     axes: list[ConceptAxis] = Field(default_factory=list)

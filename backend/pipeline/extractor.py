@@ -252,8 +252,14 @@ async def run_pipeline(
             layer1_concepts.SYSTEM_PROMPT, prompt, "capa1"
         )
         await caller.spaced()
+        # v3.8: la capa 1 declara el objeto de estudio (la obra, el caso, la
+        # empresa que el texto analiza) en vez de convertirlo en concepto-eje
+        obj = (payload or {}).get("objeto_de_estudio")
+        if isinstance(obj, dict) and obj.get("title") and not objeto_de_estudio:
+            objeto_de_estudio.update({"title": str(obj["title"]), "descripcion": str(obj.get("descripcion") or "")})
         return (payload or {}).get("concepts", []), error
 
+    objeto_de_estudio: dict = {}
     results = await asyncio.gather(*[concept_batch(b) for b in batches_of(seg_concepts)])
     raw_concepts: list[dict] = []
     concept_errors = [e for _, e in results if e]
@@ -854,6 +860,7 @@ async def run_pipeline(
 
     raw_output = {
         "concepts": concepts,
+        "objeto_de_estudio": objeto_de_estudio or None,
         "relations": relations,
         # Aparte de `relations` a propósito: una co-ocurrencia no es una
         # relación del documento, y mezclarlas haría que un consumidor afirme
