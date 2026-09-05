@@ -15,6 +15,8 @@ distinguir un paper pobre de una extracción fallida.
 """
 from __future__ import annotations
 
+import re
+
 import logging
 from typing import Any
 
@@ -163,6 +165,41 @@ def _drop_self_distinctions(concepts: list[dict], report: dict) -> int:
     return quitadas
 
 
+def _norm_palabra(w: str) -> str:
+    import unicodedata
+    w = unicodedata.normalize("NFD", w.lower())
+    return "".join(ch for ch in w if unicodedata.category(ch) != "Mn")
+
+
+def _drop_fragment_synonyms(concepts: list[dict], report: dict) -> int:
+    """Un fragmento de un título compuesto no es sinónimo: «sociales» no es
+    sinónimo de «Crítica social» ni «cultura» de «Impacto cultural». Si se
+    dejan, A3 acepta «cultura» como respuesta a impacto cultural y dos
+    conceptos comparten «sociales» como respuesta ambigua. Se quitan los
+    sinónimos de UNA palabra cuyo tallo (5 letras) coincide con el de alguna
+    palabra del título, solo en títulos de dos o más palabras. Las siglas en
+    mayúsculas (ACD, EVI) se conservan siempre."""
+    quitados = 0
+    for c in concepts or []:
+        titulo = (c.get("title") or "").strip()
+        palabras_titulo = [_norm_palabra(w) for w in re.findall(r"\w+", titulo)]
+        if len(palabras_titulo) < 2:
+            continue
+        tallos = {w[:5] for w in palabras_titulo if len(w) > 3}
+        limpios = []
+        for sin in c.get("sinonimos") or []:
+            s_ = str(sin).strip()
+            partes = re.findall(r"\w+", s_)
+            es_sigla = s_.isupper() and len(s_) <= 6
+            if len(partes) == 1 and not es_sigla and _norm_palabra(partes[0])[:5] in tallos:
+                quitados += 1
+                continue
+            limpios.append(s_)
+        c["sinonimos"] = limpios
+    report["synonyms_fragment_dropped"] = quitados
+    return quitados
+
+
 def _fix_distances(scenarios: list[dict], cases_by_id: dict[str, dict], report: dict) -> list[dict]:
     """Recalcula `distancia` en vez de aceptar la declaración del LLM.
 
@@ -201,6 +238,7 @@ def validate_output(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
     report: dict[str, Any] = {}
 
     _drop_self_distinctions(raw.get("concepts", []), report)
+    _drop_fragment_synonyms(raw.get("concepts", []), report)
     _normalize_domains(raw.get("cases", []), raw.get("scenarios", []), report)
 
     concepts = _validate_list(raw.get("concepts", []), Concept, "concepts", report)
