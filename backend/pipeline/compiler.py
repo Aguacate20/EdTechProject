@@ -47,7 +47,19 @@ from .registry import FAMILIAS, REGISTRY, REQUISITO_LABEL
 
 logger = logging.getLogger(__name__)
 
-BUNDLE_VERSION = "1.0.0"
+# 1.1.0: cada arista lleva `confianza`, `anclaje`, `veces` y `status`; cada
+# concepto lleva `evidencia_textual` y `status`. Hasta 1.0.0 el grafo del
+# bundle tiraba la confianza, y el juego decía «el texto lo dice» de
+# relaciones que el extractor había marcado como inferidas (confianza < 0.6,
+# «el texto no la trata»). El consumidor que lea 1.0.0 sigue funcionando: los
+# campos nuevos son aditivos.
+BUNDLE_VERSION = "1.1.0"
+
+# Umbral por debajo del cual una relación es INFERIDA por el extractor y no
+# afirmada ni implicada por el texto. Coincide con la escala del prompt de
+# capa 2 (≥0.8 explícita, 0.6–0.8 implicada, <0.6 inferida) y con los cortes
+# de `relaciones_por_confianza` en las estadísticas.
+UMBRAL_AFIRMADA = 0.6
 
 DIFICULTAD_NUM = {"basico": 1, "intermedio": 2, "avanzado": 3}
 
@@ -1206,12 +1218,36 @@ def compile_bundle(data: dict, permitir_juez: bool = True,
     # ── Grafo indexado ────────────────────────────────────────────────────
     adyacencia: dict[str, list[dict]] = defaultdict(list)
     por_tipo: dict[str, list[dict]] = defaultdict(list)
+    aristas_afirmadas = 0
+    aristas_inferidas = 0
     for r in relations:
+        conf = round(float(r.get("confidence_extraction") or 0.6), 2)
+        # `anclaje_textual` lo pone grounding.verificar_relaciones; si la
+        # relación no pasó por ahí, la confianza decide.
+        anclaje = r.get("anclaje_textual") or (
+            "verificado" if conf >= UMBRAL_AFIRMADA else "inferida"
+        )
         arista = {
             "from": r["from_concept_id"], "to": r["to_concept_id"],
             "tipo": (r.get("relation_type") or "").lower(),
             "descripcion": r.get("description", ""),
+            # Lo que el juego necesita para NO decir «el texto lo dice» de lo
+            # que el extractor solo infirió. Con confianza < UMBRAL_AFIRMADA
+            # el vínculo es «insinuado»: paga como creatividad respaldada, no
+            # entra al Atlas como evidencia.
+            "confianza": conf,
+            "anclaje": anclaje,
+            "veces": int(r.get("veces_afirmada") or 1),
+            # la revisión del profesor viaja con la arista: `rechazado` no
+            # entra a la mesa; `borrador` entra (es lo que hay hasta revisar)
+            "status": r.get("status") or "borrador",
         }
+        if r.get("relation_type_original"):
+            arista["tipo_original"] = r["relation_type_original"]
+        if conf >= UMBRAL_AFIRMADA:
+            aristas_afirmadas += 1
+        else:
+            aristas_inferidas += 1
         adyacencia[arista["from"]].append(arista)
         adyacencia[arista["to"]].append({**arista, "invertida": True})
         por_tipo[arista["tipo"]].append(arista)
@@ -1249,6 +1285,14 @@ def compile_bundle(data: dict, permitir_juez: bool = True,
             }) or ["A"],
             "n_distractores": len(pools.get(cid, [])),
             "n_efectivo": stats_pool.get("n_efectivo", {}).get(cid, 1.0),
+            # La cita LITERAL verificada carácter por carácter contra el PDF.
+            # Es el ancla que devuelve al lector al documento: el juego la
+            # muestra con su página en el veredicto y en la carta. Sin ella el
+            # feedback está anclado al grafo (síntesis del LLM), no al texto.
+            "evidencia_textual": c.get("evidencia_textual") or "",
+            "anclaje_textual": c.get("anclaje_textual") or "",
+            "confianza": round(float(c.get("confidence_extraction") or 0.6), 2),
+            "status": c.get("status") or "borrador",
         }
 
     # ── Veredictos ────────────────────────────────────────────────────────
@@ -1335,6 +1379,8 @@ def compile_bundle(data: dict, permitir_juez: bool = True,
         "stats": {
             "conceptos": len(concepts_idx),
             "aristas": len(relations),
+            "aristas_afirmadas": aristas_afirmadas,
+            "aristas_inferidas": aristas_inferidas,
             "unidades": len(unidades),
             "items_precompilados": total_items,
             "items_por_mecanica": {k: len(v) for k, v in items.items()},

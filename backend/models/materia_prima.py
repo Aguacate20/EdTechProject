@@ -212,6 +212,15 @@ class ConceptRelation(_ConfidenceMixin):
     relation_type: RelationType
     description: str = ""
     bidirectional: bool = False
+    # Añadidos por el verificador de anclaje, la deduplicación y la validación.
+    # Pydantic descarta en silencio lo que no está declarado: sin estas líneas,
+    # `anclaje_textual` y `veces_afirmada` se calculaban y se perdían antes de
+    # llegar al compilador, y el bundle salía con `veces = 1` para todo.
+    anclaje_textual: Optional[str] = None
+    veces_afirmada: int = 1
+    # tipo que emitió el LLM cuando no cabía en la tipología y se aproximó a `apoya`
+    relation_type_original: Optional[str] = None
+    status: str = "borrador"
 
 
 class ConceptCluster(BaseModel):

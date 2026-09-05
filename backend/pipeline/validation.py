@@ -81,6 +81,11 @@ def _coerce_relation_types(relations: list[dict], report: dict) -> list[dict]:
             r["relation_type"] = aliases[t]
             repaired += 1
         else:
+            # Tipo fuera de la tipología cerrada. Se aproxima a `apoya` con la
+            # confianza al piso: en el bundle 1.1.0 eso lo deja como
+            # «insinuado» (nunca «el texto lo dice»), y el tipo original queda
+            # a la vista del profesor para que decida.
+            r["relation_type_original"] = t
             r["relation_type"] = "apoya"
             r["confidence_extraction"] = min(_num(r.get("confidence_extraction")), 0.3)
             repaired += 1
