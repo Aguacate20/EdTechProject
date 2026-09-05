@@ -131,7 +131,7 @@ USER_PROMPT_TEMPLATE = """Texto (sección: {section_title}, páginas {pages}):
 
 Formato JSON exacto:
 {{
-  "objeto_de_estudio": {"title": "string | null", "descripcion": "string | null"},
+  "objeto_de_estudio": {{"title": "string | null", "descripcion": "string | null"}},
   "concepts": [
     {{
       "id": "string",
