@@ -269,13 +269,25 @@ def validate_output(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
     strip_dangling_refs(frameworks_dump, ["rivales"], framework_ids)
 
     theses_raw = _prune_references(raw.get("theses", []), "concept_ids", valid_ids, "theses", report)
+    huerfanos = 0
     for t in theses_raw:
         if t.get("framework_id") and t["framework_id"] not in framework_ids:
             t["framework_id"] = None
+        # v3.8.2: los conceptos por criterio/contraargumento también se podan.
+        # Un concepto que la capa 1 emitió y luego se fusionó o se descartó
+        # seguía apareciendo aquí y en ejes/clusters como id fantasma.
+        for campo in ("criterios_conceptos", "contraargumentos_conceptos"):
+            listas = t.get(campo) or []
+            podadas = [[x for x in (l or []) if x in valid_ids] for l in listas]
+            huerfanos += sum(len(l or []) for l in listas) - sum(len(l) for l in podadas)
+            t[campo] = podadas
     theses = _validate_list(theses_raw, Thesis, "theses", report)
 
     cases_raw = _prune_references(raw.get("cases", []), "concept_ids", valid_ids, "cases", report)
     for c in cases_raw:
+        if c.get("primary_concept_id") and c["primary_concept_id"] not in valid_ids:
+            huerfanos += 1
+            c["primary_concept_id"] = None
         if not c.get("primary_concept_id") and c.get("concept_ids"):
             c["primary_concept_id"] = c["concept_ids"][0]
     cases = _validate_list(cases_raw, EvidenceCase, "cases", report)
@@ -288,8 +300,20 @@ def validate_output(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
     scenarios_raw = _prune_references(scenarios_raw, "concept_ids", valid_ids, "scenarios", report)
     scenarios = _validate_list(scenarios_raw, GeneratedScenario, "scenarios", report)
 
-    clusters = _validate_list(raw.get("clusters", []), ConceptCluster, "clusters", report)
-    axes = _validate_list(raw.get("axes", []), ConceptAxis, "axes", report)
+    clusters_raw = []
+    for k in raw.get("clusters", []) or []:
+        ids = [x for x in (k.get("concept_ids") or []) if x in valid_ids]
+        huerfanos += len(k.get("concept_ids") or []) - len(ids)
+        if len(ids) >= 2:
+            clusters_raw.append({**k, "concept_ids": ids})
+    clusters = _validate_list(clusters_raw, ConceptCluster, "clusters", report)
+    axes_raw = []
+    for a in raw.get("axes", []) or []:
+        pos = [q for q in (a.get("positions") or []) if q.get("concept_id") in valid_ids]
+        huerfanos += len(a.get("positions") or []) - len(pos)
+        axes_raw.append({**a, "positions": pos})
+    axes = _validate_list(axes_raw, ConceptAxis, "axes", report)
+    report["dangling_concept_refs_pruned"] = huerfanos
 
     clean = dict(raw)
     clean.update({
