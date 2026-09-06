@@ -29,7 +29,14 @@ REGLAS:
   inventes una rivalidad que el texto no plantea.
 - 'criterios_defensa_valida': qué tendría que mostrar una defensa de esta tesis
   para contar como buena EN ESTE CAMPO. Son criterios de calidad, no la respuesta.
-- 'criterios_refutacion_valida': qué tendría que mostrar una refutación legítima.
+- 'criterios_refutacion_valida': qué tendría que mostrar una refutación legítima
+  DE ESTA TESIS EN CONCRETO: una observación, un dato, un análisis que, si
+  apareciera, obligaría a revisarla. "Presentación de evidencia contraria",
+  "Análisis de posibles sesgos" o "Consideración de perspectivas alternativas"
+  no son criterios, son categorías, y valen para cualquier tesis del mundo:
+  si un criterio tuyo sirve igual para otra tesis de esta lista, está mal.
+  Bien: "Datos que muestren que la lectura de la trilogía no se correlaciona
+  con participación cívica de los jóvenes". Lo mismo para 'criterios_defensa_valida'.
   Estos dos campos se usan como rúbrica, así que sé específico y operativo.
 - 'concept_ids': todos los conceptos que la tesis involucra, no solo el principal.
 - 'criterios_conceptos' y 'contraargumentos_conceptos': para cada criterio de

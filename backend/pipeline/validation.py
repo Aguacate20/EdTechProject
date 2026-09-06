@@ -205,6 +205,43 @@ def _drop_fragment_synonyms(concepts: list[dict], report: dict) -> int:
     return quitados
 
 
+def _drop_generic_criteria(theses: list[dict], report: dict) -> int:
+    """Un criterio de refutación que aparece palabra por palabra en tres o
+    más tesis («Presentación de evidencia contraria», «Análisis de posibles
+    sesgos») no es un criterio: es una categoría. La Balanza pregunta qué
+    observación obligaría a revisar ESTA tesis, y con boilerplate la pregunta
+    no tiene respuesta. Se quitan de cada tesis, alineando `criterios_conceptos`
+    y `defensa`; si una tesis se queda sin criterios de refutación, conserva
+    los contraargumentos y el juego la usa solo como tesis, no en la Balanza."""
+    from collections import Counter
+    def norm(t: str) -> str:
+        return re.sub(r"\s+", " ", (t or "").strip().lower())
+    campos = [("criterios_refutacion_valida", "criterios_conceptos"),
+              ("criterios_defensa_valida", None)]
+    quitados = 0
+    for campo, alineado in campos:
+        cnt = Counter(norm(c) for t in theses or [] for c in (t.get(campo) or []))
+        genericos = {k for k, v in cnt.items() if v >= 3 and k}
+        if not genericos:
+            continue
+        for t in theses or []:
+            lista = t.get(campo) or []
+            conc = t.get(alineado) if alineado else None
+            nuevos, nuevos_conc = [], []
+            for i, c in enumerate(lista):
+                if norm(c) in genericos:
+                    quitados += 1
+                    continue
+                nuevos.append(c)
+                if conc is not None and i < len(conc):
+                    nuevos_conc.append(conc[i])
+            t[campo] = nuevos
+            if alineado and conc is not None:
+                t[alineado] = nuevos_conc
+    report["generic_criteria_dropped"] = quitados
+    return quitados
+
+
 def _fix_distances(scenarios: list[dict], cases_by_id: dict[str, dict], report: dict) -> list[dict]:
     """Recalcula `distancia` en vez de aceptar la declaración del LLM.
 
@@ -274,6 +311,7 @@ def validate_output(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
     strip_dangling_refs(frameworks_dump, ["rivales"], framework_ids)
 
     theses_raw = _prune_references(raw.get("theses", []), "concept_ids", valid_ids, "theses", report)
+    _drop_generic_criteria(theses_raw, report)
     huerfanos = 0
     for t in theses_raw:
         if t.get("framework_id") and t["framework_id"] not in framework_ids:
