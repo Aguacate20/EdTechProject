@@ -35,6 +35,8 @@ juego recibe algo, puede confiar en que sirve para lo que dice servir.
 """
 from __future__ import annotations
 
+import re
+
 import hashlib
 import logging
 from collections import defaultdict
@@ -611,17 +613,35 @@ def _build_items(concepts: list[dict], pools: dict, relations: list[dict],
     # el jugador escribía la respuesta correcta para uno de ellos y el sistema
     # la marcaba como error en los otros dos. Un acierto contado como fallo es
     # peor que una pregunta mal formulada.
+    def _sin_fragmentos(c: dict) -> list[str]:
+        """Sinónimos y variantes sin fragmentos del título compuesto
+        («narrativas» no es respuesta aceptable para «Elementos narrativos»).
+        Misma regla que validation._drop_fragment_synonyms; se repite aquí
+        porque la canonicalización puede reponer variantes después de validar."""
+        titulo = c.get("title", "") or ""
+        palabras = [normalizar(w) for w in re.findall(r"\w+", titulo)]
+        tallos = {w[:5] for w in palabras if len(w) > 3} if len(palabras) >= 2 else set()
+        out = []
+        for a in list(c.get("sinonimos") or []) + list(c.get("variantes_terminologicas") or []):
+            a = str(a).strip()
+            if not a:
+                continue
+            partes = re.findall(r"\w+", a)
+            es_sigla = a.isupper() and len(a) <= 6
+            if tallos and len(partes) == 1 and not es_sigla and normalizar(partes[0])[:5] in tallos:
+                continue
+            out.append(a)
+        return out
+
     reclamos: dict[str, list[str]] = defaultdict(list)
     for c in concepts:
-        for a in [c.get("title", "")] + list(c.get("sinonimos") or []) + \
-                 list(c.get("variantes_terminologicas") or []):
+        for a in [c.get("title", "")] + _sin_fragmentos(c):
             if a:
                 reclamos[normalizar(a)].append(c["id"])
     ambiguas = {k for k, v in reclamos.items() if len(set(v)) > 1}
 
     for c in concepts:
-        todas = [c.get("title", "")] + list(c.get("sinonimos") or []) + \
-                list(c.get("variantes_terminologicas") or [])
+        todas = [c.get("title", "")] + _sin_fragmentos(c)
         todas = [a for a in todas if a]
         aceptadas = [a for a in todas if normalizar(a) not in ambiguas]
         perdidas = [a for a in todas if normalizar(a) in ambiguas]
@@ -1326,6 +1346,17 @@ def compile_bundle(data: dict, permitir_juez: bool = True,
             motivos.append("sin distractores: no se pueden generar preguntas de opción")
         if cid not in con_aristas:
             motivos.append("sin conexiones: queda fuera de las mecánicas de relación")
+        # v3.8.3: una definición que se apoya en la obra estudiada («efecto que
+        # la trilogía produce…») no vale fuera de este texto; el prompt lo pide
+        # y el modelo lo cumple a medias, así que se avisa al profesor.
+        defi = normalizar(str(by_id.get(cid, {}).get("definition") or ""))
+        objeto = data.get("objeto_de_estudio") or {}
+        pistas = ["la trilogia", "la obra", "la serie", "la novela", "la pelicula", "el documento", "el articulo"]
+        titulo_obj = normalizar(str(objeto.get("title") or "")).split(":")[0].strip()
+        if titulo_obj and len(titulo_obj) > 6:
+            pistas.append(titulo_obj)
+        if any(p_ in defi for p_ in pistas):
+            motivos.append("la definición menciona el objeto de estudio: no vale fuera de este texto")
         tiene_items = any(
             any(i.get("concept_id") == cid
                 or cid in (i.get("concept_ids") or [])

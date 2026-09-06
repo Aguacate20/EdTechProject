@@ -186,16 +186,21 @@ def _drop_fragment_synonyms(concepts: list[dict], report: dict) -> int:
         if len(palabras_titulo) < 2:
             continue
         tallos = {w[:5] for w in palabras_titulo if len(w) > 3}
-        limpios = []
-        for sin in c.get("sinonimos") or []:
-            s_ = str(sin).strip()
-            partes = re.findall(r"\w+", s_)
-            es_sigla = s_.isupper() and len(s_) <= 6
-            if len(partes) == 1 and not es_sigla and _norm_palabra(partes[0])[:5] in tallos:
-                quitados += 1
-                continue
-            limpios.append(s_)
-        c["sinonimos"] = limpios
+        # v3.8.3: la canonicalización mete las variantes morfológicas en
+        # `variantes_terminologicas` y el compilador las suma a los sinónimos;
+        # el filtro tiene que cubrir las dos listas o «narrativas» vuelve a ser
+        # respuesta aceptada para «Elementos narrativos».
+        for campo in ("sinonimos", "variantes_terminologicas"):
+            limpios = []
+            for sin in c.get(campo) or []:
+                s_ = str(sin).strip()
+                partes = re.findall(r"\w+", s_)
+                es_sigla = s_.isupper() and len(s_) <= 6
+                if len(partes) == 1 and not es_sigla and _norm_palabra(partes[0])[:5] in tallos:
+                    quitados += 1
+                    continue
+                limpios.append(s_)
+            c[campo] = limpios
     report["synonyms_fragment_dropped"] = quitados
     return quitados
 

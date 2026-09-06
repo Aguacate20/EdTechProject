@@ -50,7 +50,9 @@ lo conviertes en concepto, todo el grafo cuelga de él como una estrella y las
 ideas del texto quedan sin relación entre sí. Regla:
 - No emitas el objeto de estudio como concepto. Emítelo una sola vez en el
   campo 'objeto_de_estudio' del resultado (title + una línea), para que las
-  capas siguientes lo usen como caso y como contexto de los ejemplos.
+  capas siguientes lo usen como caso y como contexto de los ejemplos. El
+  'title' es el nombre de la obra, el caso o la empresa ("Los Juegos del
+  Hambre"), NO el título del documento que la analiza.
 - Los conceptos son las ideas con las que el texto lo analiza (los métodos,
   las categorías, los efectos, las tensiones), y se relacionan ENTRE SÍ.
 
