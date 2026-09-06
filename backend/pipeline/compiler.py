@@ -1285,9 +1285,10 @@ def compile_bundle(data: dict, permitir_juez: bool = True,
     for i, cid in enumerate(orden):
         c = by_id[cid]
         cfg = curva_por_concepto.get(cid, {})
+        _t = (c.get("title") or "").strip()
         concepts_idx[cid] = {
             "id": cid,
-            "titulo": c.get("title", ""),
+            "titulo": (_t[:1].upper() + _t[1:]) if _t else "",
             "definicion": c.get("core_definition") or c.get("definition", ""),
             "definicion_corta": c.get("definition", ""),
             "sinonimos": sorted(set(

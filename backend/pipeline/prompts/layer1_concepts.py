@@ -53,6 +53,14 @@ ideas del texto quedan sin relación entre sí. Regla:
   capas siguientes lo usen como caso y como contexto de los ejemplos. El
   'title' es el nombre de la obra, el caso o la empresa ("Los Juegos del
   Hambre"), NO el título del documento que la analiza.
+- Un elemento concreto DE la obra tampoco es un concepto: un gesto (el saludo
+  de tres dedos), un personaje, un lugar, un objeto. Eso es un ejemplo, y las
+  capas siguientes lo recogen como caso. El concepto es la idea que el ejemplo
+  ilustra (simbolismo, resistencia, activismo).
+- La 'definition' de un concepto vale sin la obra: "fenómeno por el cual la
+  trilogía inspira a los jóvenes a..." no es una definición de conciencia
+  política, es un hallazgo del paper. Define el concepto en general; lo que
+  el texto encontró sobre él va en 'evidencia_textual' y en los casos.
 - Los conceptos son las ideas con las que el texto lo analiza (los métodos,
   las categorías, los efectos, las tensiones), y se relacionan ENTRE SÍ.
 

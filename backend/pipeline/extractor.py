@@ -750,6 +750,26 @@ async def run_pipeline(
         [t for payload, _ in arg_results for t in (payload.get("theses") or [])]
     )
 
+    # v3.8.5 — piso de cobertura. Un documento con 5+ conceptos y CERO tesis y
+    # CERO marcos no es «expositivo sin debate»: es una capa que se cayó (un
+    # lote truncado, un JSON vacío, un proveedor que devolvió basura válida).
+    # Sin tesis ni marcos el juego pierde la Balanza, los criterios, las piezas
+    # de tesis y marco y la condición de marco rival, y el profesor recibe un
+    # bundle mutilado sin aviso. Se reintenta la capa completa UNA vez; si
+    # sigue vacía, queda registrado en layer_status como antes.
+    if not theses and not frameworks and len(concepts) >= 5:
+        logger.warning("[capa4] 0 tesis y 0 marcos con %d conceptos: reintento único", len(concepts))
+        arg_results_2 = await asyncio.gather(*[argument_batch(b) for b in batches_of(seg_args)])
+        arg_results = list(arg_results) + list(arg_results_2)
+        frameworks = _dedupe_by_id(
+            [f for payload, _ in arg_results for f in (payload.get("frameworks") or [])]
+        )
+        theses = _dedupe_by_id(
+            [t for payload, _ in arg_results for t in (payload.get("theses") or [])]
+        )
+        stats["capa4_reintentada"] = True
+
+
     # El tope del prompt es por lote, así que no controla el total. Se unifica
     # por parecido del enunciado —no por id— y se aplica un tope global.
     frameworks, fw_descartados = canonicalize.dedupe_by_text(
