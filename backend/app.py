@@ -273,7 +273,45 @@ async def crear_estudiante(payload: dict[str, Any]):
     nombre = (payload.get("display_name") or "").strip()
     if not nombre:
         raise HTTPException(status_code=400, detail="Falta `display_name`.")
-    return store.crear_estudiante(nombre)
+    # v3.9: con `codigo_jugador` se recupera un perfil existente (otro
+    # dispositivo); sin él se crea uno nuevo. El código vuelve siempre.
+    codigo = (payload.get("codigo_jugador") or "").strip()
+    est = store.buscar_estudiante(nombre, codigo) if codigo else None
+    if codigo and not est:
+        raise HTTPException(status_code=404, detail="No hay un perfil con ese nombre y ese código de jugador.")
+    if not est:
+        est = store.crear_estudiante(nombre)
+    return {**est, "codigo_jugador": store.codigo_de(str(est.get("id", "")))}
+
+
+@app.get("/campos/{codigo}")
+async def campo_por_codigo(codigo: str):
+    """El campo temático detrás de un código de 6 caracteres, con su bundle.
+    Es lo que el juego carga al entrar."""
+    curso = store.curso_por_codigo(codigo)
+    if not curso:
+        raise HTTPException(status_code=404, detail="No hay un campo con ese código.")
+    bundle = store.obtener_bundle(str(curso.get("id")))
+    if not bundle:
+        raise HTTPException(status_code=409, detail="El campo existe pero todavía no tiene material publicado.")
+    return {"course_id": curso.get("id"), "nombre": curso.get("title") or curso.get("nombre") or curso.get("name"), "bundle": bundle}
+
+
+@app.get("/students/{student_id}/atlas")
+async def leer_atlas(student_id: str, campo: str):
+    fila = store.obtener_atlas(student_id, campo)
+    if not fila:
+        return {"atlas": None, "updated_at": None}
+    return {"atlas": fila.get("atlas"), "updated_at": fila.get("updated_at")}
+
+
+@app.post("/students/{student_id}/atlas")
+async def escribir_atlas(student_id: str, payload: dict[str, Any]):
+    campo = (payload.get("campo") or "").strip()
+    atlas = payload.get("atlas")
+    if not campo or not isinstance(atlas, dict):
+        raise HTTPException(status_code=400, detail="Faltan `campo` y `atlas`.")
+    return store.guardar_atlas(student_id, campo, atlas)
 
 
 @app.get("/students")

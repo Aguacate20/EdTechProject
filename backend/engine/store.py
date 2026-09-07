@@ -517,3 +517,55 @@ def resumen_sesiones(student_id: str, limite: int = 10) -> list[dict]:
         ).limit(limite).execute().data or []
     except Exception:  # noqa: BLE001
         return []
+
+
+# ── v3.9: perfil por nombre + código, campos por código y Atlas persistido ──
+
+def codigo_de(identificador: str) -> str:
+    """Código corto y legible a partir de un id: 6 caracteres, sin guiones,
+    en mayúsculas. Sirve para que un estudiante recupere su perfil en otro
+    dispositivo (nombre + código) y para entrar a un campo (código del curso)."""
+    return (identificador or "").replace("-", "")[:6].upper()
+
+
+def buscar_estudiante(display_name: str, codigo: str) -> dict | None:
+    """Recuperar un perfil: mismo nombre (sin distinguir mayúsculas) y el
+    código de jugador que se le mostró al entrar."""
+    objetivo = (codigo or "").strip().upper()
+    nombre = (display_name or "").strip().lower()
+    for est in listar_estudiantes(limite=500):
+        if (est.get("display_name") or "").strip().lower() == nombre and codigo_de(str(est.get("id", ""))) == objetivo:
+            return est
+    return None
+
+
+def curso_por_codigo(codigo: str) -> dict | None:
+    """El campo temático al que da acceso un código de 6 caracteres."""
+    objetivo = (codigo or "").strip().upper()
+    for curso in listar_cursos():
+        if codigo_de(str(curso.get("id", ""))) == objetivo:
+            return curso
+    return None
+
+
+def guardar_atlas(student_id: str, course_id: str, atlas: dict) -> dict:
+    """El Atlas del estudiante en un campo. Se guarda una fila por sincronización
+    (la última manda); así funciona igual en memoria y en Supabase sin exigir
+    una restricción de unicidad. Tabla: atlases(id, student_id, course_id,
+    atlas jsonb, updated_at)."""
+    fila = {
+        "id": str(uuid.uuid4()),
+        "student_id": student_id,
+        "course_id": course_id,
+        "atlas": atlas,
+        "updated_at": _ahora(),
+    }
+    _insertar("atlases", fila)
+    return {"updated_at": fila["updated_at"]}
+
+
+def obtener_atlas(student_id: str, course_id: str) -> dict | None:
+    filas = _seleccionar("atlases", {"student_id": student_id, "course_id": course_id})
+    if not filas:
+        return None
+    return max(filas, key=lambda f: f.get("updated_at") or "")
