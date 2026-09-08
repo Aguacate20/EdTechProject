@@ -212,6 +212,9 @@ async def _run_pipeline_job(
     """Ejecuta el pipeline y actualiza el job store."""
     _jobs[job_id]["status"] = "running"
     _jobs[job_id]["started_at"] = datetime.now(timezone.utc).isoformat()
+    # v3.11: el pipeline informa cada capa terminada; queda en el job para el cliente
+    from pipeline import extractor as _ext
+    _ext.PROGRESO_ACTUAL.set(lambda snap, jid=job_id: _jobs.get(jid, {}).update({"progreso": snap}))
     
     try:
         result = await run_pipeline(

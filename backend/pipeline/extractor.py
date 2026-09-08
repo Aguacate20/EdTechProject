@@ -27,6 +27,7 @@ Cambios respecto a v2:
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import logging
 import os
@@ -140,6 +141,14 @@ ENABLE_CANONICALIZATION = os.environ.get("ENABLE_CANONICALIZATION", "1") != "0"
 VERIFICAR_ANCLAJE = os.environ.get("VERIFICAR_ANCLAJE", "1") != "0"
 
 
+# v3.11: quien lanza el pipeline puede dejar aquí un callback y recibe cada
+# capa terminada mientras corre (app.py lo usa para que GET /jobs/{id} traiga
+# `progreso` y el juego pinte la barra por capas).
+PROGRESO_ACTUAL: contextvars.ContextVar = contextvars.ContextVar("progreso_actual", default=None)
+CAPAS_ESPERADAS = ["layer1_concepts", "layer1b_distinctions", "layer1c_canonical", "layer2_relations",
+                   "layer3_repertoires", "layer4_arguments", "layer5_cases", "layer5b_scenarios", "compile"]
+
+
 class _Status:
     def __init__(self) -> None:
         self.entries: list[dict] = []
@@ -149,9 +158,23 @@ class _Status:
         self.entries.append({"layer": layer, "status": status, "items": items, "detail": detail})
         if status == "failed":
             logger.error("[pipeline] capa %s FALLÓ: %s", layer, detail)
+        self._emitir()
 
     def time(self, layer: str, seconds: float) -> None:
         self.timings[layer] = round(seconds, 1)
+        self._emitir()
+
+    def _emitir(self) -> None:
+        cb = PROGRESO_ACTUAL.get()
+        if not cb:
+            return
+        hechas = [e["layer"] for e in self.entries]
+        try:
+            cb({"capas_hechas": hechas, "capas_esperadas": CAPAS_ESPERADAS,
+                "ultima": self.entries[-1] if self.entries else None,
+                "fraccion": round(min(1.0, len(set(hechas)) / max(1, len(CAPAS_ESPERADAS))), 2)})
+        except Exception:  # el progreso nunca puede tumbar el pipeline
+            logger.debug("[pipeline] callback de progreso falló", exc_info=True)
 
     def failed_layers(self) -> list[str]:
         return [e["layer"] for e in self.entries if e["status"] == "failed"]
