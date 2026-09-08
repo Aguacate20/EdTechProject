@@ -316,7 +316,33 @@ async def escribir_atlas(student_id: str, payload: dict[str, Any]):
 
 @app.get("/students")
 async def listar_estudiantes():
-    return {"students": store.listar_estudiantes()}
+    """Los perfiles existentes, con su código de jugador, para elegir uno al entrar
+    (como el menú del extractor). Sin contraseña: es un piloto en aula."""
+    return {"students": [
+        {**e, "codigo_jugador": store.codigo_de(str(e.get("id", "")))}
+        for e in store.listar_estudiantes()
+    ]}
+
+
+@app.get("/campos")
+async def listar_campos():
+    """Los campos temáticos publicados: código, nombre y tamaño. Es la lista que
+    ve el estudiante al entrar; un campo sin material publicado no aparece."""
+    campos = []
+    for curso in store.listar_cursos()[:40]:
+        cid = str(curso.get("id", ""))
+        bundle = store.obtener_bundle(cid)
+        if not bundle:
+            continue
+        stats = bundle.get("stats") or {}
+        campos.append({
+            "codigo": store.codigo_de(cid),
+            "course_id": cid,
+            "nombre": curso.get("title") or curso.get("nombre") or curso.get("name") or bundle.get("source_filename") or cid,
+            "conceptos": stats.get("conceptos"),
+            "aristas": stats.get("aristas"),
+        })
+    return {"campos": campos}
 
 
 @app.get("/students/{student_id}")
