@@ -495,7 +495,8 @@ async def run_pipeline(
         f"{len(rel_errors)} lotes con error" if rel_errors else "",
     )
 
-    clusters = graph_utils.compute_clusters([c["id"] for c in concepts], relations)
+    clusters = graph_utils.compute_clusters([c["id"] for c in concepts], relations,
+                                            titulos={c["id"]: (c.get("title") or c["id"]) for c in concepts})
     stats["clusters"] = len(clusters)
 
     # ── Paso 3.5: Ejes de atributos ────────────────────────────────────────

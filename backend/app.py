@@ -375,6 +375,22 @@ def _plan_del_estudiante(student_id: str, forzar: bool = False) -> dict | None:
     return bundle
 
 
+@app.get("/students/{student_id}/biblioteca")
+async def biblioteca(student_id: str):
+    """Los documentos del perfil, sin la materia prima: título, tamaño y cuántos
+    conceptos aportó. Es la lista que ve el estudiante en Biblioteca."""
+    docs = []
+    for d in store.documentos_de(student_id):
+        mp = d.get("materia_prima") or {}
+        docs.append({
+            "id": d.get("id"), "titulo": d.get("title") or d.get("id"),
+            "conceptos": len(mp.get("concepts") or []),
+            "relaciones": len(mp.get("relations") or []),
+            "objeto_de_estudio": (mp.get("objeto_de_estudio") or {}).get("title"),
+        })
+    return {"documentos": docs}
+
+
 @app.get("/students/{student_id}/bundle")
 async def bundle_del_plan(student_id: str):
     """El paquete de juego del plan completo, listo para el motor.

@@ -152,6 +152,7 @@ def compute_clusters(
     max_iter: int = 30,
     seed: int = 7,
     max_fraccion: float = 0.5,
+    titulos: dict[str, str] | None = None,
 ) -> list[dict]:
     """Label propagation sobre el grafo no dirigido. Determinista vía seed.
 
@@ -212,11 +213,21 @@ def compute_clusters(
                 continue
         clusters.append({"concept_ids": sorted(members), "_label": label})
 
+    # v3.10: la zona se llama como su concepto más conectado («Zona de Crítica
+    # social»), no «Grupo 2». En la galaxia cada zona es una nebulosa con nombre.
+    grado: dict[str, int] = {}
+    for r in relations or []:
+        for k in (r.get("from_concept_id"), r.get("to_concept_id")):
+            if k:
+                grado[k] = grado.get(k, 0) + 1
+    titulos = titulos or {}
     salida = []
     for i, c in enumerate(sorted(clusters, key=lambda x: -len(x["concept_ids"])), 1):
+        eje = max(c["concept_ids"], key=lambda k: (grado.get(k, 0), -len(str(k))))
         salida.append({
             "id": f"cluster_{i}",
-            "label": f"Grupo {i}",
+            "label": f"Zona de {titulos.get(eje, eje)}",
+            "eje": eje,
             "concept_ids": c["concept_ids"],
         })
     return salida
