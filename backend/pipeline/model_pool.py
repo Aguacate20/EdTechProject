@@ -62,9 +62,6 @@ DEFAULT_POOL: list[dict] = [
      "max_output": 8000, "context_limit": 65_536},
 
     # ── Groq: muchas peticiones, poco token. Solo para llamadas chicas.
-    {"key": "groq:llama-3.3-70b", "provider": "groq", "model": "llama-3.3-70b-versatile",
-     "tier": "alta", "rpm": 30, "tpm": 12_000, "tpd": 100_000,
-     "max_output": 8000, "context_limit": 128_000},
     {"key": "groq:gpt-oss-120b", "provider": "groq", "model": "openai/gpt-oss-120b",
      "tier": "alta", "rpm": 30, "tpm": 8_000, "tpd": 200_000,
      "max_output": 8000, "context_limit": 131_000},
@@ -127,6 +124,57 @@ class ModelPool:
             )
         logger.info("[pool] %d modelos activos: %s",
                     len(self.entries), [e["key"] for e in self.entries])
+
+    # ── v3.14 · el pool se cuida solo ──────────────────────────────────────────
+    def desactivar(self, key: str, motivo: str) -> None:
+        """Cuarentena en caliente: un modelo que ya no existe (404) no se vuelve a probar."""
+        antes = len(self.entries)
+        self.entries = [e for e in self.entries if e.get("key") != key]
+        if len(self.entries) < antes:
+            self.retirados = getattr(self, "retirados", {})
+            self.retirados[key] = motivo
+            logger.warning("[pool] %s retirado del pool: %s · quedan %d", key, motivo, len(self.entries))
+
+    async def verificar_con_proveedores(self) -> dict:
+        """Al arrancar: cada proveedor dice qué modelos tiene; los de la lista que ya no existan
+        salen del pool. Si un proveedor no responde, sus modelos se dejan como están (no se
+        castiga un fallo de red como si fuera un modelo muerto)."""
+        import os
+        import httpx
+        listados = {
+            "cerebras": ("https://api.cerebras.ai/v1/models", "CEREBRAS_API_KEY"),
+            "groq": ("https://api.groq.com/openai/v1/models", "GROQ_API_KEY"),
+            "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/models", "GEMINI_API_KEY"),
+        }
+        informe: dict = {"verificados": {}, "retirados": [], "sin_respuesta": []}
+        async with httpx.AsyncClient(timeout=15) as cli:
+            for proveedor, (url, token_env) in listados.items():
+                token = os.environ.get(token_env) or os.environ.get("GOOGLE_API_KEY") if proveedor == "gemini" else os.environ.get(token_env)
+                mios = [e for e in self.entries if e.get("provider") == proveedor]
+                if not mios or not token:
+                    continue
+                try:
+                    r = await cli.get(url, headers={"Authorization": f"Bearer {token}"})
+                    r.raise_for_status()
+                    datos = r.json()
+                    ids = {str(m.get("id") or m.get("name") or "").split("/")[-1] for m in (datos.get("data") or datos.get("models") or [])}
+                except Exception as e:  # noqa: BLE001
+                    informe["sin_respuesta"].append(f"{proveedor}: {e}")
+                    continue
+                informe["verificados"][proveedor] = len(ids)
+                for e in mios:
+                    modelo = str(e.get("model", "")).split("/")[-1]
+                    if ids and modelo not in ids and not any(modelo in x or x in modelo for x in ids):
+                        self.desactivar(e["key"], f"el proveedor ya no lo lista ({modelo})")
+                        informe["retirados"].append(e["key"])
+        logger.info("[pool] verificación: %s", informe)
+        return informe
+
+    def estado(self) -> dict:
+        return {
+            "activos": [e["key"] for e in self.entries],
+            "retirados": getattr(self, "retirados", {}),
+        }
 
     def capacity_summary(self) -> dict:
         return {

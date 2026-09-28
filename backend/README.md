@@ -7,6 +7,16 @@ sdk: docker
 app_port: 7860
 pinned: false
 ---
+## v3.14 · el pool se cuida solo
+
+- **Verificación al arrancar**: cada proveedor (Cerebras, Groq, Gemini) lista sus modelos; los
+  del pool que ya no existan se retiran, con constancia en el log. Un proveedor que no
+  responde no castiga a sus modelos.
+- **Cuarentena en caliente**: un 404 a mitad de corrida retira ese modelo por el resto de la
+  sesión (`LLMRetryable`, se prueba otro).
+- **`GET /salud`**: modelos activos y retirados con motivo, sin leer logs.
+- Fuera `groq:llama-3.3-70b` (retirado por Groq).
+
 ## v3.13 · pool limpio, casos con reintento, capa 4 con aire
 
 - Fuera del pool `zai-glm-4.7`, `gemma-4-31b`, `qwen3.6-27b` y `gemma-4-26b`: devolvían 404 y

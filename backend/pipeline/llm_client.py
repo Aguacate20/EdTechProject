@@ -283,6 +283,10 @@ def _parse_context_limit(body: str) -> int | None:
 def _handle_status_error(entry: dict, e: httpx.HTTPStatusError) -> None:
     status = e.response.status_code
     pool = get_pool()
+    if status == 404:
+        # v3.14 · el proveedor retiró el modelo: fuera del pool por el resto de la sesión
+        pool.desactivar(entry["key"], "404 del proveedor (modelo retirado)")
+        raise LLMRetryable(f"Modelo retirado por el proveedor: {entry['key']}") from e
     if status == 400:
         body = e.response.text or ""
         # Rechazo por ventana de contexto. El proveedor informa su límite real

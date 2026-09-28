@@ -39,6 +39,12 @@ async def lifespan(app: FastAPI):
         _jobs.update(store.cargar_jobs())
     except Exception as e:  # noqa: BLE001
         logger.warning("jobs: sin recuperación: %s", e)
+    # v3.14 · el pool se verifica contra los proveedores: los modelos retirados salen solos
+    try:
+        from pipeline.model_pool import get_pool
+        await get_pool().verificar_con_proveedores()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[pool] sin verificación al arrancar: %s", e)
     yield
     logger.info("Shutdown")
 
@@ -384,6 +390,13 @@ def _plan_del_estudiante(student_id: str, forzar: bool = False) -> dict | None:
     bundle = merge.fusionar_documentos(documentos)
     store.guardar_plan(student_id, bundle, len(documentos))
     return bundle
+
+
+@app.get("/salud")
+async def salud():
+    """v3.14 · estado del pool de modelos: activos y retirados (con motivo)."""
+    from pipeline.model_pool import get_pool
+    return get_pool().estado()
 
 
 @app.get("/students/{student_id}/biblioteca")
