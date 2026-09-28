@@ -49,7 +49,9 @@ logger = logging.getLogger(__name__)
 # tier: 'alta' para razonamiento y esquemas complejos, 'media' para extracción
 # mecánica de volumen. El enrutador nunca baja de tier, solo puede subir.
 # `context_limit` es la ventana total (entrada + salida). Los valores de los
-# modelos en preview son conservadores a propósito: el de zai-glm-4.7 está
+# v3.13 · fuera zai-glm-4.7, gemma-4-31b, qwen3.6-27b y gemma-4-26b: devolvían 404 y se
+# llevaban capas enteras (canonicalización y casos). Los presupuestos de los que quedan:
+# modelos en preview son conservadores a propósito: el de zai-glm-4.7 estaba
 # medido contra un error real y el de gemma-4-31b se asume igual mientras no
 # haya dato. Quedarse corto solo manda las llamadas grandes al modelo de
 # ventana amplia; pasarse hace fallar una capa entera.
@@ -58,14 +60,6 @@ DEFAULT_POOL: list[dict] = [
     {"key": "cerebras:gpt-oss-120b", "provider": "cerebras", "model": "gpt-oss-120b",
      "tier": "alta", "rpm": 5, "tpm": 30_000, "tpd": 1_000_000,
      "max_output": 8000, "context_limit": 65_536},
-    {"key": "cerebras:zai-glm-4.7", "provider": "cerebras", "model": "zai-glm-4.7",
-     "tier": "alta", "rpm": 5, "tpm": 30_000, "tpd": 1_000_000,
-     "max_output": 8000, "context_limit": 8_192,
-     "nota": "Preview. Ventana medida contra un error real. Deprecación 2026-08-17."},
-    {"key": "cerebras:gemma-4-31b", "provider": "cerebras", "model": "gemma-4-31b",
-     "tier": "media", "rpm": 5, "tpm": 30_000, "tpd": 1_000_000,
-     "max_output": 8000, "context_limit": 8_192,
-     "nota": "Preview. Ventana asumida por prudencia."},
 
     # ── Groq: muchas peticiones, poco token. Solo para llamadas chicas.
     {"key": "groq:llama-3.3-70b", "provider": "groq", "model": "llama-3.3-70b-versatile",
@@ -74,9 +68,6 @@ DEFAULT_POOL: list[dict] = [
     {"key": "groq:gpt-oss-120b", "provider": "groq", "model": "openai/gpt-oss-120b",
      "tier": "alta", "rpm": 30, "tpm": 8_000, "tpd": 200_000,
      "max_output": 8000, "context_limit": 131_000},
-    {"key": "groq:qwen3.6-27b", "provider": "groq", "model": "qwen/qwen3.6-27b",
-     "tier": "media", "rpm": 30, "tpm": 8_000, "tpd": 200_000,
-     "max_output": 8000, "context_limit": 32_000},
 
     # ── Google: lento pero de ventana enorme y cupo aparte. Red de seguridad.
     #
@@ -84,11 +75,6 @@ DEFAULT_POOL: list[dict] = [
     # cuando todos los demás están agotados o la petición no cabe en ninguna
     # ventana. La penalización de latencia hace que el enrutador lo elija solo
     # en ese caso: preferimos tardar tres minutos a devolver una capa vacía.
-    {"key": "gemini:gemma-4-26b", "provider": "gemini", "model": "gemma-4-26b-a4b-it",
-     "tier": "media", "rpm": 30, "tpm": 15_000, "tpd": 1_000_000,
-     "max_output": 8000, "context_limit": 128_000,
-     "latency_penalty_s": 150.0,
-     "nota": "Último recurso. Free tier con colas de minutos."},
     {"key": "gemini:flash", "provider": "gemini", "model": "gemini-flash-latest",
      "tier": "alta", "rpm": 15, "tpm": 250_000, "tpd": 1_000_000,
      "max_output": 8000, "context_limit": 1_000_000,

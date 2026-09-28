@@ -131,7 +131,7 @@ LAYERS = {
     # respuesta se truncaba antes del primer eje completo.
     "capa2b":      {"tier": "alta",  "max_tokens": _env_int("MT_CAPA2B", 5000)},
     "capa3":       {"tier": "alta",  "max_tokens": _env_int("MT_CAPA3", 3500)},
-    "capa4":       {"tier": "alta",  "max_tokens": _env_int("MT_CAPA4", 6500)},
+    "capa4":       {"tier": "alta",  "max_tokens": _env_int("MT_CAPA4", 9000)},
     "capa5":       {"tier": "media", "max_tokens": _env_int("MT_CAPA5", 3500)},
     "capa5b":      {"tier": "media", "max_tokens": _env_int("MT_CAPA5B", 3500)},
 }
@@ -815,10 +815,19 @@ async def run_pipeline(
         await caller.spaced()
         return (payload or {}).get("cases", []), error
 
+    lotes_cases = batches_of(seg_cases)
     arg_results, case_results = await asyncio.gather(
         asyncio.gather(*[argument_batch(b) for b in batches_of(seg_args)]),
-        asyncio.gather(*[case_batch(b) for b in batches_of(seg_cases)]),
+        asyncio.gather(*[case_batch(b) for b in lotes_cases]),
     )
+    # v3.13 · segunda pasada sobre los lotes de casos que fallaron: un lote perdido deja al
+    # juego sin Ancla ni Contraejemplo para ese material
+    fallidos_cases = [l for l, (_, err) in zip(lotes_cases, case_results) if err]
+    if fallidos_cases:
+        logger.info("[pipeline] reintentando %d lote(s) de casos", len(fallidos_cases))
+        case_results = list(case_results) + list(
+            await asyncio.gather(*[case_batch(l) for l in fallidos_cases])
+        )
 
     frameworks = _dedupe_by_id(
         [f for payload, _ in arg_results for f in (payload.get("frameworks") or [])]
