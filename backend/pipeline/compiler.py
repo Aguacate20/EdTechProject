@@ -1385,6 +1385,8 @@ def compile_bundle(data: dict, permitir_juez: bool = True,
             "adyacencia": dict(adyacencia),
             "por_tipo": dict(por_tipo),
             "clusters": clusters,
+            # v3.12 · pares que el texto distingue a propósito: el juego los juzga como error con causa
+            "no_vinculos": [nv for nv in (data.get("no_vinculos") or []) if isinstance(nv, dict) and nv.get("a") in concepts_idx and nv.get("b") in concepts_idx],
             # Cercanía textual sin vínculo afirmado: cubre el hueco entre "el
             # documento afirma una relación" y "no hay nada".
             "cooccurrences": data.get("cooccurrences", []) or [],

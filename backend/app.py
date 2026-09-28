@@ -34,6 +34,11 @@ _jobs: dict[str, dict[str, Any]] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("EdTech Extractor backend iniciado")
+    # v3.12 · los trabajos recientes vuelven de Supabase (los que quedaron a medias, como fallidos)
+    try:
+        _jobs.update(store.cargar_jobs())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("jobs: sin recuperación: %s", e)
     yield
     logger.info("Shutdown")
 
@@ -211,6 +216,7 @@ async def _run_pipeline_job(
 ) -> None:
     """Ejecuta el pipeline y actualiza el job store."""
     _jobs[job_id]["status"] = "running"
+    store.guardar_job({**_jobs[job_id], "job_id": job_id})
     _jobs[job_id]["started_at"] = datetime.now(timezone.utc).isoformat()
     # v3.11: el pipeline informa cada capa terminada; queda en el job para el cliente
     from pipeline import extractor as _ext
@@ -225,6 +231,7 @@ async def _run_pipeline_job(
         _jobs[job_id]["status"] = "completed"
         _jobs[job_id]["result"] = result
         _jobs[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+        store.guardar_job({**_jobs[job_id], "job_id": job_id})
         logger.info(f"[job:{job_id}] Completado exitosamente")
 
         # Si la subida vino desde el perfil de alguien, el documento se
@@ -254,6 +261,7 @@ async def _run_pipeline_job(
         _jobs[job_id]["status"] = "failed"
         _jobs[job_id]["error"] = str(e)
         _jobs[job_id]["failed_at"] = datetime.now(timezone.utc).isoformat()
+        store.guardar_job({**_jobs[job_id], "job_id": job_id})
 
 # ============================================================================
 # Perfil, cursos y sesiones

@@ -82,6 +82,16 @@ USER_PROMPT_TEMPLATE = """Texto:
 Conceptos (usa exactamente estos IDs):
 {concepts_json}
 
+Tres cosas más, además de las relaciones (v3.12):
+- CADENAS: si el texto describe un proceso o una secuencia (A lleva a B, B lleva a C), emite
+  cada eslabón como relación causa/antecede (A→B, B→C), no solo los extremos.
+- MATIZA: cuando un concepto limita, condiciona o restringe el alcance de otro, emítelo como
+  relación "matiza" con la descripción diciendo hasta dónde llega.
+- NO-VÍNCULOS: pares que el texto DISTINGUE a propósito (dos nociones que el autor separa, o
+  que un lector confundiría y el texto aclara que no son lo mismo ni se implican). Van en
+  "no_vinculos", con el motivo en una frase. Solo si el texto lo hace explícito; nunca por
+  inferencia tuya. Máximo 8.
+
 Formato JSON exacto:
 {{
   "relations": [
@@ -93,5 +103,8 @@ Formato JSON exacto:
       "bidirectional": false,
       "confidence_extraction": 0.0
     }}
+  ],
+  "no_vinculos": [
+    {{ "a": "concept_id", "b": "concept_id", "motivo": "string (por qué el texto los distingue)" }}
   ]
 }}"""

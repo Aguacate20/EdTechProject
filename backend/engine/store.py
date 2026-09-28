@@ -26,7 +26,7 @@ import logging
 import os
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -569,3 +569,48 @@ def obtener_atlas(student_id: str, course_id: str) -> dict | None:
     if not filas:
         return None
     return max(filas, key=lambda f: f.get("updated_at") or "")
+
+
+# ── v3.12 · trabajos: el estado sobrevive al reinicio del Space ──────────────
+def guardar_job(job: dict) -> None:
+    """Guarda el estado de un trabajo (sin el bundle: eso ya vive en course_materials).
+    Tabla `jobs(id text pk, status text, student_id text, course_id text, error text,
+    filename text, created_at timestamptz, updated_at timestamptz)`. Sin Supabase, no hace nada."""
+    c = cliente()
+    if not c or not job.get("job_id") and not job.get("id"):
+        return
+    fila = {
+        "id": job.get("job_id") or job.get("id"),
+        "status": job.get("status"),
+        "student_id": job.get("student_id"),
+        "course_id": job.get("course_id"),
+        "error": job.get("error"),
+        "filename": job.get("filename"),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        c.table("jobs").upsert(fila, on_conflict="id").execute()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("jobs: no se pudo guardar %s: %s", fila["id"], e)
+
+
+def cargar_jobs(limite: int = 200) -> dict[str, dict]:
+    """Los trabajos recientes, para que /jobs/{id} responda tras un reinicio.
+    Los que quedaron `running` al caer el Space se marcan `failed` (no se reanudan)."""
+    c = cliente()
+    if not c:
+        return {}
+    try:
+        filas = c.table("jobs").select("*").order("updated_at", desc=True).limit(limite).execute().data or []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("jobs: no se pudieron cargar: %s", e)
+        return {}
+    salida: dict[str, dict] = {}
+    for f in filas:
+        estado = f.get("status")
+        if estado in ("running", "queued", "pending"):
+            estado = "failed"
+            f["error"] = f.get("error") or "El servidor se reinició durante la extracción; vuelve a subir el archivo."
+        salida[f["id"]] = {"job_id": f["id"], "status": estado, "student_id": f.get("student_id"), "course_id": f.get("course_id"),
+                           "error": f.get("error"), "filename": f.get("filename"), "recuperado": True}
+    return salida

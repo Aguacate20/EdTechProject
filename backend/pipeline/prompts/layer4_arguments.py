@@ -29,7 +29,10 @@ REGLAS:
   inventes una rivalidad que el texto no plantea.
 - 'criterios_defensa_valida': qué tendría que mostrar una defensa de esta tesis
   para contar como buena EN ESTE CAMPO. Son criterios de calidad, no la respuesta.
-- 'criterios_refutacion_valida': qué tendría que mostrar una refutación legítima
+- 'criterios_refutacion_valida': qué tendría que mostrar una refutación legítima. REGLA (v3.12):
+  si una objeción NOMBRA algo observable (evidencia, datos, una mayoría, cifras, un estudio, un
+  resultado), no va en 'counterarguments': redáctala aquí como condición, «si se observara que…,
+  la tesis tendría que revisarse». En 'counterarguments' quedan solo las objeciones retóricas.
   DE ESTA TESIS EN CONCRETO: una observación, un dato, un análisis que, si
   apareciera, obligaría a revisarla. "Presentación de evidencia contraria",
   "Análisis de posibles sesgos" o "Consideración de perspectivas alternativas"

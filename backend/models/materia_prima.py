@@ -432,6 +432,8 @@ class MateriaPrimaOutput(BaseModel):
     # concepto: es el material sobre el que el texto piensa.
     objeto_de_estudio: Optional[dict] = None
     relations: list[ConceptRelation] = Field(default_factory=list)
+    # v3.12 · pares que el texto distingue a propósito (no se implican ni son lo mismo)
+    no_vinculos: list[dict] = Field(default_factory=list)
     clusters: list[ConceptCluster] = Field(default_factory=list)
     axes: list[ConceptAxis] = Field(default_factory=list)
     repertoires: list[CommonRepertoire] = Field(default_factory=list)

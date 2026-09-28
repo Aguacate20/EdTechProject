@@ -473,7 +473,12 @@ async def run_pipeline(
             "capa2_relaciones",
         )
         await caller.spaced()
-        return (payload or {}).get("relations", []), error
+        # v3.12 · los no-vínculos viajan pegados a las relaciones del lote
+        rels = list((payload or {}).get("relations", []) or [])
+        for nv in ((payload or {}).get("no_vinculos") or []):
+            if isinstance(nv, dict) and nv.get("a") and nv.get("b"):
+                rels.append({"__no_vinculo__": True, "a": str(nv["a"]), "b": str(nv["b"]), "motivo": str(nv.get("motivo") or "")})
+        return rels, error
 
     lotes_rel = batches_of(seg_rel)
     rel_results = await asyncio.gather(*[relation_batch(b) for b in lotes_rel])
@@ -489,6 +494,20 @@ async def run_pipeline(
     rel_errors = [e for _, e in rel_results if e]
     for items, _ in rel_results:
         raw_relations.extend(items)
+    # v3.12 · separar los no-vínculos de las relaciones antes de verificar
+    no_vinculos_raw = [r for r in raw_relations if isinstance(r, dict) and r.get("__no_vinculo__")]
+    raw_relations = [r for r in raw_relations if not (isinstance(r, dict) and r.get("__no_vinculo__"))]
+    vistos_nv: set[tuple[str, str]] = set()
+    no_vinculos: list[dict] = []
+    for nv in no_vinculos_raw:
+        a, b = nv["a"], nv["b"]
+        if a not in valid_ids or b not in valid_ids or a == b:
+            continue
+        clave = tuple(sorted((a, b)))
+        if clave in vistos_nv:
+            continue
+        vistos_nv.add(clave)
+        no_vinculos.append({"a": a, "b": b, "motivo": nv.get("motivo", "")})
 
     relations = verificador.verificar_relaciones(raw_relations)
     relations, rel_report = graph_utils.dedupe_relations(relations, valid_ids)
@@ -499,6 +518,28 @@ async def run_pipeline(
     rel_report["descripciones_incompletas"] = graph_utils.validar_descripciones(
         relations, concepts
     )
+    # v3.12 · completar: los conceptos que quedaron sin ningún vínculo se repescan con una
+    # llamada enfocada (la mitad del texto seleccionado, la lista de huérfanos como pista).
+    vinculados = {r.get("from_concept_id") for r in relations} | {r.get("to_concept_id") for r in relations}
+    huerfanos = [c for c in concepts if c.get("id") in valid_ids and c.get("id") not in vinculados]
+    if huerfanos and len(huerfanos) <= max(3, len(concepts) // 2):
+        logger.info("[capa2] completar: %d concepto(s) sin vínculo, repesca", len(huerfanos))
+        pista = "\n\nCONCEPTOS SIN VÍNCULO (prioridad: encuentra sus relaciones con los demás, solo si el texto las afirma): " + ", ".join(f"{c.get('id')} ({c.get('title')})" for c in huerfanos)
+        payload_r, err_r = await caller.json(
+            layer2_relations.SYSTEM_PROMPT,
+            layer2_relations.USER_PROMPT_TEMPLATE.format(
+                text=sections.combine(seg_rel[: max(1, len(seg_rel) // 2)], with_headers=False) + pista,
+                concepts_json=concepts_json,
+            ),
+            "capa2_completar",
+        )
+        extra = [r for r in ((payload_r or {}).get("relations") or []) if isinstance(r, dict)]
+        if extra and not err_r:
+            extra_ok = verificador.verificar_relaciones(extra)
+            antes = len(relations)
+            relations, _ = graph_utils.dedupe_relations(relations + extra_ok, valid_ids)
+            stats["completar_relaciones"] = len(relations) - antes
+    stats["no_vinculos"] = len(no_vinculos)
     status.time("layer2_relations", time.monotonic() - t0)
     stats["relations_raw"] = len(raw_relations)
     stats["relations"] = len(relations)
@@ -553,6 +594,18 @@ async def run_pipeline(
         await caller.spaced()
 
         definidos = [a for a in ((payload or {}).get("axes") or []) if a.get("id")][:MAX_AXES]
+        # v3.12 · si no salió ningún eje, un reintento único (como la capa 4)
+        if not definidos and len(concepts) >= 8:
+            logger.warning("[capa2b] 0 ejes con %d conceptos: reintento único", len(concepts))
+            payload, error = await caller.json(
+                layer2b_axes.SYSTEM_PROMPT_DEFINE,
+                layer2b_axes.USER_PROMPT_DEFINE.format(concepts_with_subdimensions=payload_text),
+                "capa2b_ejes",
+                max_tokens=_env_int("MT_CAPA2B_DEFINE", 3500),
+            )
+            await caller.spaced()
+            definidos = [a for a in ((payload or {}).get("axes") or []) if a.get("id")][:MAX_AXES]
+            stats["capa2b_reintentada"] = True
 
         if not definidos:
             status.record("layer2b_axes", "failed", 0, error or "no se definieron ejes")
@@ -906,6 +959,7 @@ async def run_pipeline(
         "concepts": concepts,
         "objeto_de_estudio": objeto_de_estudio or None,
         "relations": relations,
+        "no_vinculos": no_vinculos,
         # Aparte de `relations` a propósito: una co-ocurrencia no es una
         # relación del documento, y mezclarlas haría que un consumidor afirme
         # cosas que nadie dijo.
