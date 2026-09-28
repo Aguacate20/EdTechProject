@@ -1,3 +1,12 @@
+---
+title: EdTech Extractor
+emoji: 📚
+colorFrom: indigo
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
 ## v3.12 · el extractor al 100 % de lo que el juego sabe usar
 
 - **Capa 2**: `no_vinculos` (pares que el texto distingue a propósito, con motivo; máx. 8, solo
@@ -17,12 +26,3 @@
 Reprocesar un PDF regenera su bundle con los campos nuevos; el plan fusionado del perfil se
 rehace solo; el Atlas y las constelaciones no cambian (van por id de concepto).
 
----
-title: EdTech Extractor
-emoji: 📚
-colorFrom: indigo
-colorTo: green
-sdk: docker
-app_port: 7860
-pinned: false
----
