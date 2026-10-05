@@ -478,6 +478,42 @@ async def experimento_openrouter(repetir: bool = False):
     return _EXPERIMENTO
 
 
+@app.get("/limites")
+async def limites():
+    """v3.28 · los límites de cada modelo: lo configurado en el catálogo, lo que el
+    proveedor informó en su última respuesta y, para OpenRouter, el estado de la cuenta."""
+    import httpx
+    from pipeline.llm_client import ULTIMAS_CABECERAS
+    from pipeline.model_pool import get_pool
+    pool = get_pool()
+    modelos = []
+    for e in pool.entries:
+        lim = pool.limiters.get(e["key"])
+        modelos.append({
+            "modelo": e["key"],
+            "configurado": {k: e.get(k) for k in ("rpm", "tpm", "rpd", "tpd", "context_limit")},
+            "uso_en_esta_sesion": getattr(lim, "stats", None),
+            "ultima_respuesta_del_proveedor": ULTIMAS_CABECERAS.get(e["key"], "sin llamadas desde el último reinicio"),
+        })
+    cuenta_openrouter: Any = "sin OPENROUTER_API_KEY"
+    llave = os.environ.get("OPENROUTER_API_KEY")
+    if llave:
+        try:
+            async with httpx.AsyncClient(timeout=15) as cli:
+                r = await cli.get("https://openrouter.ai/api/v1/key",
+                                  headers={"Authorization": f"Bearer {llave}"})
+            cuenta_openrouter = r.json().get("data", r.json())
+            if isinstance(cuenta_openrouter, dict):
+                cuenta_openrouter.pop("label", None)  # trae un trozo de la llave
+        except Exception as e:  # noqa: BLE001
+            cuenta_openrouter = f"no se pudo consultar: {e}"
+    return {
+        "modelos": modelos,
+        "retirados": getattr(pool, "retirados", {}),
+        "cuenta_openrouter": cuenta_openrouter,
+    }
+
+
 @app.get("/salud")
 async def salud():
     """v3.14 · estado del pool de modelos: activos y retirados (con motivo)."""

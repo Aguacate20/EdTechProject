@@ -191,6 +191,21 @@ async def _request(
                                          max_tokens, temperature)
 
 
+# v3.28 · lo que cada proveedor dijo de sus límites en su última respuesta
+ULTIMAS_CABECERAS: dict[str, dict] = {}
+
+
+def _anotar_cabeceras(entry: dict, response: httpx.Response) -> None:
+    lim = {k: v for k, v in response.headers.items()
+           if any(t in k.lower() for t in ("ratelimit", "rate-limit", "retry-after", "quota"))}
+    ULTIMAS_CABECERAS[entry["key"]] = {
+        "http": response.status_code,
+        "cuando": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+        "cabeceras": lim,
+        "error": (response.text or "")[:400] if response.status_code >= 400 else None,
+    }
+
+
 async def _call_openai_compatible(
     entry: dict, url: str, token: str,
     system_prompt: str, user_prompt: str,
@@ -220,6 +235,7 @@ async def _call_openai_compatible(
     try:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
             response = await client.post(url, headers=headers, json=payload)
+            _anotar_cabeceras(entry, response)
             response.raise_for_status()
             data = response.json()
     except httpx.HTTPStatusError as e:
