@@ -233,7 +233,7 @@ async def _call_openai_compatible(
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     try:
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=float(entry.get("timeout_s", HTTP_TIMEOUT))) as client:
             response = await client.post(url, headers=headers, json=payload)
             _anotar_cabeceras(entry, response)
             response.raise_for_status()

@@ -117,11 +117,19 @@ DEFAULT_POOL: list[dict] = [
      "tier": "alta", "rpm": 15, "tpm": 250_000, "tpd": 1_000_000,
      "max_output": 8000, "context_limit": 1_000_000,
      "latency_penalty_s": 150.0},
-    {"key": "gemini:gemma-27b", "provider": "gemini", "model": "gemma-3-27b-it",
-     "tier": "alta", "rpm": 30, "tpm": 15_000, "tpd": 400_000,
-     "max_output": 8000, "context_limit": 131_000,
-     "latency_penalty_s": 240.0,
-     "nota": "Lento (minutos por llamada en el free tier). Solo si todo lo demás cae."},
+    # v3.29 · Gemma por Google AI Studio como ÚLTIMA opción: cuando se acaban las
+    # 50 peticiones de OpenRouter y Gemini Flash no tiene cuota, la extracción
+    # termina igual, solo que despacio. Los nombres que Google no liste se retiran solos.
+    {"key": "gemini:gemma-4-31b", "provider": "gemini", "model": "gemma-4-31b-it",
+     "tier": "alta", "rpm": 25, "tpm": 15_000, "tpd": 10_000_000,
+     "max_output": 8000, "context_limit": 120_000,
+     "latency_penalty_s": 400.0, "timeout_s": 420.0, "espera_429_s": 30.0,
+     "nota": "Red final: lento (minutos por llamada) pero con cupo diario amplio."},
+    {"key": "gemini:gemma-4-26b", "provider": "gemini", "model": "gemma-4-26b-a4b-it",
+     "tier": "alta", "rpm": 25, "tpm": 15_000, "tpd": 10_000_000,
+     "max_output": 8000, "context_limit": 120_000,
+     "latency_penalty_s": 410.0, "timeout_s": 420.0, "espera_429_s": 30.0,
+     "nota": "Red final: lento (minutos por llamada) pero con cupo diario amplio."},
 ]
 
 DEFAULT_CONTEXT_LIMIT = 8_192
@@ -211,6 +219,8 @@ class ModelPool:
                     informe["sin_respuesta"].append(f"{proveedor}: {e}")
                     continue
                 informe["verificados"][proveedor] = len(ids)
+                if proveedor == "gemini":
+                    logger.info("[pool] google ofrece gemma: %s", sorted(i for i in ids if "gemma" in i))
                 if proveedor == "nvidia":
                     # v3.23 · diagnóstico: los modelos grandes que ofrece la cuenta
                     logger.info("[pool] nvidia ofrece: %s", sorted(
