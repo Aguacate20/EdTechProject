@@ -66,6 +66,17 @@ DEFAULT_POOL: list[dict] = [
      "tier": "alta", "rpm": 30, "tpm": 8_000, "tpd": 200_000,
      "max_output": 8000, "context_limit": 131_000},
 
+    # ── v3.19 · Mistral: plan gratuito sin tarjeta, ventana amplia. Es quien
+    # atiende las capas grandes desde que Cerebras cerró su plan gratuito.
+    # Los límites son prudentes: si el proveedor responde 429, el pool se ajusta solo.
+    {"key": "mistral:large", "provider": "mistral", "model": "mistral-large-latest",
+     "tier": "alta", "rpm": 20, "tpm": 200_000, "tpd": 5_000_000,
+     "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens"},
+    {"key": "mistral:medium", "provider": "mistral", "model": "mistral-medium-latest",
+     "tier": "alta", "rpm": 20, "tpm": 200_000, "tpd": 5_000_000,
+     "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens",
+     "latency_penalty_s": 5.0},
+
     # ── Google: lento pero de ventana enorme y cupo aparte. Red de seguridad.
     #
     # No es una alternativa a los de arriba, es lo que evita perder una capa
@@ -118,7 +129,7 @@ class ModelPool:
         for entry in entries:
             provider = entry["provider"]
             token_env = {"cerebras": "CEREBRAS_API_KEY", "groq": "GROQ_API_KEY",
-                         "gemini": "GOOGLE_API_KEY", "hf": "HF_TOKEN",
+                         "gemini": "GOOGLE_API_KEY", "mistral": "MISTRAL_API_KEY", "hf": "HF_TOKEN",
                          "claude": "ANTHROPIC_API_KEY"}.get(provider)
             if token_env and not os.environ.get(token_env):
                 logger.info("[pool] %s desactivado: falta %s", entry["key"], token_env)
@@ -159,6 +170,7 @@ class ModelPool:
             "cerebras": ("https://api.cerebras.ai/v1/models", "CEREBRAS_API_KEY"),
             "groq": ("https://api.groq.com/openai/v1/models", "GROQ_API_KEY"),
             "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/models", "GEMINI_API_KEY"),
+            "mistral": ("https://api.mistral.ai/v1/models", "MISTRAL_API_KEY"),
         }
         informe: dict = {"verificados": {}, "retirados": [], "sin_respuesta": []}
         async with httpx.AsyncClient(timeout=15) as cli:
@@ -237,11 +249,18 @@ class ModelPool:
         viables.sort(key=orden)
         return viables
 
-    async def acquire(self, tier: str, estimated_tokens: float) -> tuple[dict, float]:
-        """Elige modelo, espera su cupo y lo reserva. Devuelve (entrada, segundos esperados)."""
+    async def acquire(self, tier: str, estimated_tokens: float,
+                      evitar: list[str] | None = None) -> tuple[dict, float]:
+        """Elige modelo, espera su cupo y lo reserva. Devuelve (entrada, segundos esperados).
+
+        v3.19 · `evitar`: los que ya fallaron en esta misma llamada van al final.
+        Sin esto, un modelo saturado (503) se reintentaba cinco veces mientras
+        otro sano esperaba detrás por su penalización de latencia."""
         viables = self.candidates(tier, estimated_tokens)
         if not viables and tier == "media":
             viables = self.candidates("alta", estimated_tokens)  # subir de tier sí, bajar no
+        if evitar:
+            viables.sort(key=lambda e: evitar.count(e["key"]))  # estable: conserva el orden entre iguales
         if not viables:
             ventanas = [e.get("context_limit", DEFAULT_CONTEXT_LIMIT) for e in self.entries]
             mayor = max(ventanas) if ventanas else 0

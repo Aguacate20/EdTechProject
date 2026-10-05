@@ -48,6 +48,7 @@ PROVIDER_ENDPOINTS = {
     "groq": ("https://api.groq.com/openai/v1/chat/completions", "GROQ_API_KEY"),
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
                "GOOGLE_API_KEY"),
+    "mistral": ("https://api.mistral.ai/v1/chat/completions", "MISTRAL_API_KEY"),
     "hf": ("https://router.huggingface.co/v1/chat/completions", "HF_TOKEN"),
     "claude": ("https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY"),
 }
@@ -118,7 +119,7 @@ async def call_llm(
 
     for _ in range(MAX_MODEL_ATTEMPTS):
         try:
-            entry, waited = await pool.acquire(tier, estimated)
+            entry, waited = await pool.acquire(tier, estimated, evitar=tried)
         except NoCapacity as e:
             raise LLMError(str(e)) from e
 
