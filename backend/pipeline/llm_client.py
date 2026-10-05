@@ -78,7 +78,7 @@ def _flip_token_param(entry: dict) -> str:
     _TOKEN_PARAM[entry["key"]] = nuevo
     logger.warning("[llm] %s no acepta '%s'; se cambia a '%s'", entry["key"], actual, nuevo)
     return nuevo
-MAX_MODEL_ATTEMPTS = int(os.environ.get("LLM_MAX_MODEL_ATTEMPTS", "3"))
+MAX_MODEL_ATTEMPTS = int(os.environ.get("LLM_MAX_MODEL_ATTEMPTS", "5"))
 
 
 class LLMError(Exception):
@@ -318,7 +318,8 @@ def _handle_status_error(entry: dict, e: httpx.HTTPStatusError) -> None:
         pool.sync(entry["key"], dict(e.response.headers))
         raise LLMRetryable(f"429 en {entry['key']} (pide {wait_s:.0f}s)") from e
     if status >= 500:
-        pool.penalize(entry["key"], 10)
+        # v3.18 · un 503 es saturación: 30 s fuera para que el siguiente intento vaya a otro modelo
+        pool.penalize(entry["key"], 30 if status == 503 else 10)
         raise LLMRetryable(f"{status} en {entry['key']}") from e
     raise LLMError(f"{status} en {entry['key']}: {e.response.text[:250]}") from e
 

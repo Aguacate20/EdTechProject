@@ -77,6 +77,20 @@ DEFAULT_POOL: list[dict] = [
      "max_output": 8000, "context_limit": 1_000_000,
      "latency_penalty_s": 120.0,
      "nota": "Último recurso de tier alta. Ventana muy amplia."},
+
+    # ── v3.18 · segunda y tercera red de seguridad en Google, con cupo aparte.
+    # Cuando Flash responde 503 (saturación) y la petición no cabe en Groq, sin
+    # esto la capa se pierde. Si Google no lista alguno de estos nombres, la
+    # verificación de arranque lo retira sola: añadirlos no puede romper nada.
+    {"key": "gemini:flash-lite", "provider": "gemini", "model": "gemini-flash-lite-latest",
+     "tier": "alta", "rpm": 15, "tpm": 250_000, "tpd": 1_000_000,
+     "max_output": 8000, "context_limit": 1_000_000,
+     "latency_penalty_s": 150.0},
+    {"key": "gemini:gemma-27b", "provider": "gemini", "model": "gemma-3-27b-it",
+     "tier": "alta", "rpm": 30, "tpm": 15_000, "tpd": 400_000,
+     "max_output": 8000, "context_limit": 131_000,
+     "latency_penalty_s": 240.0,
+     "nota": "Lento (minutos por llamada en el free tier). Solo si todo lo demás cae."},
 ]
 
 DEFAULT_CONTEXT_LIMIT = 8_192
