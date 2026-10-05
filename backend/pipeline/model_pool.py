@@ -77,6 +77,11 @@ DEFAULT_POOL: list[dict] = [
      "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens",
      "latency_penalty_s": 5.0},
 
+    {"key": "mistral:small", "provider": "mistral", "model": "mistral-small-latest",
+     "tier": "alta", "rpm": 20, "tpm": 200_000, "tpd": 5_000_000,
+     "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens",
+     "latency_penalty_s": 10.0},
+
     # ── Google: lento pero de ventana enorme y cupo aparte. Red de seguridad.
     #
     # No es una alternativa a los de arriba, es lo que evita perder una capa
@@ -188,6 +193,10 @@ class ModelPool:
                     informe["sin_respuesta"].append(f"{proveedor}: {e}")
                     continue
                 informe["verificados"][proveedor] = len(ids)
+                if proveedor == "mistral":
+                    # v3.20 · diagnóstico: qué modelos de texto ofrece esta cuenta
+                    logger.info("[pool] mistral ofrece: %s", sorted(
+                        i for i in ids if any(t in i for t in ("large", "medium", "small"))))
                 for e in mios:
                     modelo = str(e.get("model", "")).split("/")[-1]
                     if ids and modelo not in ids and not any(modelo in x or x in modelo for x in ids):

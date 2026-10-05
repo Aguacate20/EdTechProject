@@ -313,6 +313,8 @@ def _handle_status_error(entry: dict, e: httpx.HTTPStatusError) -> None:
             ) from e
     if status == 429:
         wait_s = _retry_after(e.response) or 60.0
+        # v3.20 · el cuerpo dice si es cupo por minuto, cupo del plan o cuenta sin activar
+        logger.warning("[llm] 429 de %s: %s", entry["key"], (e.response.text or "")[:300])
         # Si llegamos acá, nuestra estimación se quedó corta: se castiga la
         # cubeta de ese modelo y se prueba otro en vez de dormir un minuto.
         pool.penalize(entry["key"], wait_s)
