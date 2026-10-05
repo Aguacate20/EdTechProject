@@ -415,6 +415,22 @@ async def biblioteca(student_id: str):
     return {"documentos": docs}
 
 
+@app.delete("/students/{student_id}/biblioteca/{course_id}")
+async def borrar_de_biblioteca(student_id: str, course_id: str):
+    """v3.16 · borra un documento del perfil: su materia prima, sus conceptos y
+    sus sesiones. El plan se rehace con lo que quede; si no queda nada, se
+    borra también el Atlas."""
+    try:
+        r = store.borrar_documento(student_id, course_id)
+    except Exception as e:  # noqa: BLE001
+        logger.error("[biblioteca] no se pudo borrar %s: %s", course_id, e)
+        raise HTTPException(status_code=500, detail=f"No se pudo borrar el documento: {e}")
+    if not r.get("borrado"):
+        raise HTTPException(status_code=404, detail="Ese documento no está en tu biblioteca.")
+    # los trabajos en memoria de ese documento ya no apuntan a nada
+    return r
+
+
 @app.get("/students/{student_id}/bundle")
 async def bundle_del_plan(student_id: str):
     """El paquete de juego del plan completo, listo para el motor.

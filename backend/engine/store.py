@@ -259,6 +259,51 @@ def documentos_de(student_id: str) -> list[dict]:
     return salida
 
 
+def _borrar(tabla: str, filtros: dict) -> None:
+    """Borra las filas que cumplen los filtros, en Supabase y en el respaldo de
+    memoria. Lanza si Supabase rechaza el borrado: quien llama decide si importa."""
+    _memoria[tabla] = [
+        f for f in _memoria.get(tabla, [])
+        if not all(f.get(k) == v for k, v in filtros.items())
+    ]
+    c = cliente()
+    if not c:
+        return
+    q = c.table(tabla).delete()
+    for k, v in filtros.items():
+        q = q.eq(k, v)
+    q.execute()
+
+
+def borrar_documento(student_id: str, course_id: str) -> dict:
+    """v3.16 · quita un documento del perfil con todo lo que cuelga de él.
+
+    Solo borra lo que es del estudiante (owner_id). Las tablas hijas van
+    primero y cada una es de mejor esfuerzo (puede no existir o no tener
+    filas); el curso va al final y ese sí debe salir. El plan fusionado se
+    invalida: se rehace con lo que quede. Si no queda ningún documento, se
+    borra también el Atlas del perfil: no hay galaxia sin lecturas.
+    """
+    propio = [c for c in listar_cursos() if str(c.get("id")) == str(course_id)
+              and c.get("owner_id") == student_id]
+    if not propio:
+        return {"borrado": False}
+    for tabla in ("event_log", "cognitive_signals", "sessions", "concepts", "course_materials"):
+        try:
+            _borrar(tabla, {"course_id": course_id})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[store] al borrar %s de %s: %s", tabla, course_id, e)
+    _borrar("courses", {"id": course_id})
+    invalidar_plan(student_id)
+    quedan = len(documentos_de(student_id))
+    if quedan == 0:
+        try:
+            _borrar("atlases", {"student_id": student_id})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[store] al borrar el Atlas de %s: %s", student_id, e)
+    return {"borrado": True, "quedan": quedan}
+
+
 def guardar_plan(student_id: str, bundle: dict, n_documentos: int) -> None:
     fila = {
         "student_id": student_id, "bundle": bundle,
