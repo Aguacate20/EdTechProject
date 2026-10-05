@@ -63,6 +63,28 @@ DEFAULT_POOL: list[dict] = [
      "tier": "alta", "rpm": 30, "tpm": 8_000, "tpd": 200_000,
      "max_output": 8000, "context_limit": 131_000},
 
+    # ── v3.23 · NVIDIA Build: gratis sin tarjeta, 40 peticiones por minuto y sin
+    # tope de tokens publicado. Candidato a hacer las capas grandes. Los nombres
+    # que NVIDIA no liste se retiran solos al arrancar.
+    {"key": "nvidia:gpt-oss-120b", "provider": "nvidia", "model": "openai/gpt-oss-120b",
+     "tier": "alta", "rpm": 30, "tpm": 300_000, "tpd": 20_000_000,
+     "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",
+     "espera_429_s": 15.0},
+    {"key": "nvidia:llama-3.3-70b", "provider": "nvidia", "model": "meta/llama-3.3-70b-instruct",
+     "tier": "alta", "rpm": 30, "tpm": 300_000, "tpd": 20_000_000,
+     "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",
+     "latency_penalty_s": 3.0, "espera_429_s": 15.0},
+
+    # ── v3.23 · OpenRouter gratis: 50 peticiones al día (unos dos PDF). Respaldo.
+    {"key": "openrouter:gpt-oss-120b", "provider": "openrouter", "model": "openai/gpt-oss-120b:free",
+     "tier": "alta", "rpm": 15, "tpm": 200_000, "rpd": 50, "tpd": 5_000_000,
+     "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",
+     "latency_penalty_s": 8.0, "espera_429_s": 30.0},
+    {"key": "openrouter:llama-3.3-70b", "provider": "openrouter", "model": "meta-llama/llama-3.3-70b-instruct:free",
+     "tier": "alta", "rpm": 15, "tpm": 200_000, "rpd": 50, "tpd": 5_000_000,
+     "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",
+     "latency_penalty_s": 9.0, "espera_429_s": 30.0},
+
     # ── v3.19 · Mistral: plan gratuito sin tarjeta, ventana amplia. Es quien
     # atiende las capas grandes desde que Cerebras cerró su plan gratuito.
     # Los límites son prudentes: si el proveedor responde 429, el pool se ajusta solo.
@@ -132,7 +154,8 @@ class ModelPool:
         for entry in entries:
             provider = entry["provider"]
             token_env = {"cerebras": "CEREBRAS_API_KEY", "groq": "GROQ_API_KEY",
-                         "gemini": "GOOGLE_API_KEY", "mistral": "MISTRAL_API_KEY", "hf": "HF_TOKEN",
+                         "gemini": "GOOGLE_API_KEY", "mistral": "MISTRAL_API_KEY", "nvidia": "NVIDIA_API_KEY",
+                         "openrouter": "OPENROUTER_API_KEY", "hf": "HF_TOKEN",
                          "claude": "ANTHROPIC_API_KEY"}.get(provider)
             if token_env and not os.environ.get(token_env):
                 logger.info("[pool] %s desactivado: falta %s", entry["key"], token_env)
@@ -174,6 +197,8 @@ class ModelPool:
             "groq": ("https://api.groq.com/openai/v1/models", "GROQ_API_KEY"),
             "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/models", "GEMINI_API_KEY"),
             "mistral": ("https://api.mistral.ai/v1/models", "MISTRAL_API_KEY"),
+            "nvidia": ("https://integrate.api.nvidia.com/v1/models", "NVIDIA_API_KEY"),
+            "openrouter": ("https://openrouter.ai/api/v1/models", "OPENROUTER_API_KEY"),
         }
         informe: dict = {"verificados": {}, "retirados": [], "sin_respuesta": []}
         async with httpx.AsyncClient(timeout=15) as cli:
@@ -191,10 +216,13 @@ class ModelPool:
                     informe["sin_respuesta"].append(f"{proveedor}: {e}")
                     continue
                 informe["verificados"][proveedor] = len(ids)
-                if proveedor == "mistral":
-                    # v3.20 · diagnóstico: qué modelos de texto ofrece esta cuenta
-                    logger.info("[pool] mistral ofrece: %s", sorted(
-                        i for i in ids if any(t in i for t in ("large", "medium", "small"))))
+                if proveedor == "nvidia":
+                    # v3.23 · diagnóstico: los modelos grandes que ofrece la cuenta
+                    logger.info("[pool] nvidia ofrece: %s", sorted(
+                        i for i in ids if any(t in i for t in (
+                            "gpt-oss", "llama-3.3", "llama-4", "qwen", "deepseek", "nemotron", "gemma", "mistral")))[:60])
+                if proveedor == "openrouter":
+                    logger.info("[pool] openrouter gratis: %s", sorted(i for i in ids if i.endswith(":free")))
                 for e in mios:
                     if e.get("sin_verificar"):
                         continue

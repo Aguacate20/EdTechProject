@@ -49,6 +49,8 @@ PROVIDER_ENDPOINTS = {
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
                "GOOGLE_API_KEY"),
     "mistral": ("https://api.mistral.ai/v1/chat/completions", "MISTRAL_API_KEY"),
+    "nvidia": ("https://integrate.api.nvidia.com/v1/chat/completions", "NVIDIA_API_KEY"),
+    "openrouter": ("https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY"),
     "hf": ("https://router.huggingface.co/v1/chat/completions", "HF_TOKEN"),
     "claude": ("https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY"),
 }
