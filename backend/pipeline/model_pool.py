@@ -56,10 +56,7 @@ logger = logging.getLogger(__name__)
 # haya dato. Quedarse corto solo manda las llamadas grandes al modelo de
 # ventana amplia; pasarse hace fallar una capa entera.
 DEFAULT_POOL: list[dict] = [
-    # ── Cerebras: pocas peticiones, mucho token. Único apto para payloads grandes.
-    {"key": "cerebras:gpt-oss-120b", "provider": "cerebras", "model": "gpt-oss-120b",
-     "tier": "alta", "rpm": 5, "tpm": 30_000, "tpd": 1_000_000,
-     "max_output": 8000, "context_limit": 65_536},
+    # v3.22 · Cerebras fuera: cerró su plan gratuito (402 en cada llamada).
 
     # ── Groq: muchas peticiones, poco token. Solo para llamadas chicas.
     {"key": "groq:gpt-oss-120b", "provider": "groq", "model": "openai/gpt-oss-120b",
@@ -73,10 +70,7 @@ DEFAULT_POOL: list[dict] = [
     # medium y small 20K TPM, todos a 1 petición por segundo. `mistral-large-2512`
     # no sale en /models pero sí tiene cupo, así que no pasa por la verificación
     # de arranque; si de verdad no existe, el primer 404 lo retira.
-    {"key": "mistral:large", "provider": "mistral", "model": "mistral-large-2512",
-     "tier": "alta", "rpm": 30, "tpm": 250_000, "tpd": 20_000_000,
-     "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens",
-     "sin_verificar": True, "espera_429_s": 5.0},
+    # v3.22 · mistral-large fuera: el plan gratuito responde 403.
     {"key": "mistral:medium", "provider": "mistral", "model": "mistral-medium-latest",
      "tier": "alta", "rpm": 30, "tpm": 20_000, "tpd": 5_000_000,
      "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens",

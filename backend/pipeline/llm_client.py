@@ -117,7 +117,10 @@ async def call_llm(
     last_error: Exception | None = None
     tried: list[str] = []
 
-    for _ in range(MAX_MODEL_ATTEMPTS):
+    # v3.22 · como mínimo una oportunidad por modelo del pool: con cinco intentos
+    # fijos y cinco modelos caídos por delante, el sano nunca llegaba a probarse.
+    intentos = max(MAX_MODEL_ATTEMPTS, len(pool.entries) + 2)
+    for _ in range(intentos):
         try:
             entry, waited = await pool.acquire(tier, estimated, evitar=tried)
         except NoCapacity as e:
