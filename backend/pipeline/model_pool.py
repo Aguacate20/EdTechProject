@@ -78,14 +78,17 @@ DEFAULT_POOL: list[dict] = [
     # ── v3.23 · OpenRouter gratis: 50 peticiones al día (unos dos PDF). Respaldo.
     # v3.24 · los gratuitos grandes que la cuenta lista hoy (no hay gpt-oss ni llama).
     # v3.25 · último recurso: medidos a 80-300 s por llamada, detrás de Gemini.
-    {"key": "openrouter:nemotron-ultra", "provider": "openrouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
-     "tier": "alta", "rpm": 15, "tpm": 200_000, "rpd": 50, "tpd": 5_000_000,
-     "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",
-     "latency_penalty_s": 200.0, "espera_429_s": 30.0},
+    # v3.27 · medido en /experimento/openrouter: Nemotron Super SIN razonamiento
+    # respondió en 2,8 s (razonando, su hermano Ultra tardaba 80-300 s). Va primero
+    # para las capas grandes; los demás quedan de último recurso.
     {"key": "openrouter:nemotron-super", "provider": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free",
      "tier": "alta", "rpm": 15, "tpm": 200_000, "rpd": 50, "tpd": 5_000_000,
      "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",
-     "latency_penalty_s": 210.0, "espera_429_s": 30.0},
+     "latency_penalty_s": 0.0, "espera_429_s": 30.0, "extra_body": {"reasoning": {"enabled": False}}},
+    {"key": "openrouter:nemotron-ultra", "provider": "openrouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+     "tier": "alta", "rpm": 15, "tpm": 200_000, "rpd": 50, "tpd": 5_000_000,
+     "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",
+     "latency_penalty_s": 20.0, "espera_429_s": 30.0, "extra_body": {"reasoning": {"enabled": False}}},
     {"key": "openrouter:gemma-4-31b", "provider": "openrouter", "model": "google/gemma-4-31b-it:free",
      "tier": "alta", "rpm": 15, "tpm": 200_000, "rpd": 50, "tpd": 5_000_000,
      "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",

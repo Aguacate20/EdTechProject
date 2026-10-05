@@ -214,6 +214,7 @@ async def _call_openai_compatible(
         "temperature": temperature,
         "stream": False,
     }
+    payload.update(entry.get("extra_body") or {})  # v3.27 · p. ej. apagar el razonamiento
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     try:
