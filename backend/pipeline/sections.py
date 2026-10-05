@@ -72,6 +72,9 @@ LAYER_ROUTES: dict[str, list[SectionKind]] = {
     "relations": [
         SectionKind.THEORY, SectionKind.DISCUSSION, SectionKind.INTRO,
         SectionKind.CONCLUSION, SectionKind.OTHER,
+        # v3.15 · un artículo dice qué método estudia qué y qué resultado sostiene qué en
+        # Metodología y Resultados: fuera de la ruta, esos conceptos quedaban sin vínculo.
+        SectionKind.RESULTS, SectionKind.METHOD,
     ],
     # El enriquecimiento necesita el arco completo del concepto en el paper.
     "enrichment": [
@@ -100,7 +103,7 @@ LAYER_ROUTES: dict[str, list[SectionKind]] = {
 # (inicio, fin) en proporción sobre la lista de segmentos.
 _FALLBACK_SPANS: dict[str, tuple[float, float]] = {
     "concepts": (0.0, 1.0),
-    "relations": (0.0, 0.7),
+    "relations": (0.0, 1.0),
     "enrichment": (0.0, 1.0),
     "repertoires": (0.0, 0.35),     # más el último tramo, ver select_for_layer
     "arguments": (0.55, 1.0),

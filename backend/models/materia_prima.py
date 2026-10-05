@@ -101,6 +101,8 @@ class _ConfidenceMixin(BaseModel):
 class ConceptDimension(BaseModel):
     name: str
     description: str
+    # v3.15 · la frase literal del texto que respalda el atributo (sin ella no entra al juego)
+    evidencia_textual: str = ""
 
 
 class ConceptDistinction(BaseModel):
@@ -188,6 +190,8 @@ class Concept(_ConfidenceMixin):
     # Enriquecimiento (paso 2.5)
     core_definition: Optional[str] = None
     subdimensions: list[ConceptDimension] = Field(default_factory=list)
+    # v3.15 · atributos que el modelo propuso sin cita verificable: no se juegan, quedan para revisión
+    subdimensions_sin_cita: list[ConceptDimension] = Field(default_factory=list)
     distinctions: list[ConceptDistinction] = Field(default_factory=list)
     measurement_approach: Optional[str] = None
     theoretical_role: Optional[str] = None
@@ -218,6 +222,9 @@ class ConceptRelation(_ConfidenceMixin):
     # llegar al compilador, y el bundle salía con `veces = 1` para todo.
     anclaje_textual: Optional[str] = None
     veces_afirmada: int = 1
+    # v3.15 · cita literal que sostiene la relación, y de dónde salió si no la afirma el texto
+    evidencia_textual: str = ""
+    origen: Optional[str] = None
     # tipo que emitió el LLM cuando no cabía en la tipología y se aproximó a `apoya`
     relation_type_original: Optional[str] = None
     status: str = "borrador"

@@ -19,10 +19,13 @@ ricas sintetizando las apariciones de cada concepto a lo largo del texto.
 REGLAS:
 - No copies frases literales — sintetiza con tus propias palabras.
 - 'core_definition' debe capturar la esencia más completa según el paper.
-- 'subdimensions': aspectos o facetas internas del concepto. Se usan después para
-  construir ejes de comparación entre conceptos, así que nómbralas de forma que
-  puedan aplicarse a más de un concepto (ej: "grado de abstracción" y no
-  "abstracción de este concepto").
+- 'subdimensions' (v3.15): SOLO las partes, componentes o aspectos del concepto que EL TEXTO
+  menciona. No completes con lo que sabes del tema: si el texto no desglosa el concepto,
+  devuelve una lista vacía, y eso es una respuesta correcta. Cada una lleva
+  'evidence_quote': la frase del texto donde aparece, COPIADA TAL CUAL (6 a 40 palabras);
+  es la única excepción a la regla de no copiar. Nómbrala con las palabras del texto y de
+  modo que no se confunda con el título de OTRO concepto de la lista (mal: «estructura
+  narrativa» como parte de un concepto que no es Narrativa).
 - 'distinctions' es el campo más importante: con qué OTRO concepto del curso se
   confunde este, y cuál es exactamente la diferencia. Usa el id del otro concepto
   en 'from_concept'. Si dos conceptos se parecen y el paper los separa, dilo aquí.
@@ -47,7 +50,7 @@ Enriquece TODOS los conceptos anteriores. Formato JSON exacto:
       "id": "string (mismo id recibido)",
       "core_definition": "string",
       "subdimensions": [
-        {{"name": "string", "description": "string"}}
+        {{"name": "string", "description": "string", "evidence_quote": "string (frase LITERAL del texto)"}}
       ],
       "distinctions": [
         {{"from_concept": "string (id de otro concepto)", "difference": "string"}}

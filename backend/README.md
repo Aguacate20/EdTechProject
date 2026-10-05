@@ -7,6 +7,19 @@ sdk: docker
 app_port: 7860
 pinned: false
 ---
+## v3.15 · lo que el juego afirma, el texto lo dice
+
+- **Atributos solo con cita**: cada subdimensión trae la frase literal del texto que la respalda y
+  se verifica como los conceptos; las que el modelo añadió de su conocimiento general no entran
+  al juego (quedan en `subdimensions_sin_cita` para revisión).
+- **Relaciones con cita**: el modelo copia la frase que sostiene cada relación (`evidence_quote`)
+  y el anclaje se verifica contra ella, no contra la descripción parafraseada. La cita viaja al
+  bundle en `evidencia`.
+- **Método y Resultados entran a la capa de relaciones**: ahí es donde un artículo dice qué método
+  estudia qué. La repesca de conceptos sin vínculo lee los párrafos donde esos conceptos aparecen.
+- **Insinuadas con moderación**: de los pares que el texto trata juntos sin afirmar nada salen
+  unas pocas conexiones inferidas (confianza ≤ 0.55, máximo `MAX_INSINUADAS`, 8 por defecto).
+
 ## v3.14 · el pool se cuida solo
 
 - **Verificación al arrancar**: cada proveedor (Cerebras, Groq, Gemini) lista sus modelos; los

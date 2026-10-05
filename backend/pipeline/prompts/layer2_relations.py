@@ -74,6 +74,16 @@ un concepto cuando la pregunta era sobre la relación entre dos.
 - Mal:  "extiende el concepto de apego digital"
 - Bien: "el apego digital extiende la teoría del apego al vínculo con sistemas de IA"
 
+CITA LITERAL (v3.15). Cada relación lleva 'evidence_quote': la frase del texto que la
+sostiene, COPIADA TAL CUAL, entre 6 y 40 palabras, sin parafrasear ni corregir erratas.
+Si el texto la afirma (confianza 0.8 o más) la cita es obligatoria. Si la infieres y
+ninguna frase la sostiene, deja 'evidence_quote' vacío y baja la confianza: una relación
+sin cita no puede presentarse como algo que «el texto dice».
+
+MÉTODOS Y RESULTADOS también se relacionan. Si el texto dice que un método examina,
+identifica o interpreta un concepto, o que un resultado revela o sugiere otro, eso es
+una relación ('apoya' si aporta evidencia; 'requiere' si lo presupone): emítela.
+
 - Responde SOLO con JSON válido. Sin explicaciones ni markdown."""
 
 USER_PROMPT_TEMPLATE = """Texto:
@@ -100,11 +110,59 @@ Formato JSON exacto:
       "to_concept_id": "string",
       "relation_type": "apoya|contradice|matiza|extiende|requiere|causa|ejemplifica|generaliza|contrasta",
       "description": "string (qué sostiene esta relación, NOMBRANDO ambos conceptos)",
+      "evidence_quote": "string (frase LITERAL del texto que la sostiene, o vacío si es inferida)",
       "bidirectional": false,
       "confidence_extraction": 0.0
     }}
   ],
   "no_vinculos": [
     {{ "a": "concept_id", "b": "concept_id", "motivo": "string (por qué el texto los distingue)" }}
+  ]
+}}"""
+
+
+# ── v3.15 · insinuadas: lo que el texto deja ver sin afirmarlo ───────────────
+#
+# Un texto corto afirma pocas relaciones, y eso está bien: no hay que inventarle
+# vínculos firmes. Pero entre dos conceptos que el texto trata una y otra vez en
+# el mismo párrafo suele haber una conexión que un lector atento propondría. Esas
+# van aparte, con confianza baja: el juego las paga como creatividad respaldada
+# («insinuado»), nunca como «el texto lo dice», y no entran al Atlas como evidencia.
+
+SYSTEM_PROMPT_INSINUADAS = """Eres un lector experto. Te doy pares de conceptos que un texto
+trata juntos en los mismos párrafos SIN afirmar ninguna relación entre ellos. Para cada par
+decide si un lector atento podría proponer, con buen criterio, una relación que el texto
+deja entrever.
+
+REGLAS:
+- Son INFERENCIAS, no afirmaciones del texto. Confianza entre 0.35 y 0.55, nunca más.
+- Usa solo estos tipos: apoya, matiza, extiende, requiere, causa, ejemplifica, generaliza, contrasta.
+- La dirección importa. Elige la que mejor se sostiene con lo que el texto dice de cada uno.
+- 'description' nombra los DOS conceptos y explica en una frase por qué la conexión es
+  defendible a partir del texto. No afirmes que el texto la dice.
+- Si para un par no ves una relación defendible, OMÍTELO. Es mejor devolver pocas y buenas:
+  como máximo {maximo}.
+- Usa exactamente los IDs que se te dan.
+- Responde SOLO con JSON válido. Sin explicaciones ni markdown."""
+
+USER_PROMPT_INSINUADAS = """Texto:
+{text}
+
+Pares que el texto trata juntos (id_a | id_b | párrafos compartidos):
+{pares}
+
+Conceptos:
+{concepts_json}
+
+Formato JSON exacto:
+{{
+  "relations": [
+    {{
+      "from_concept_id": "string",
+      "to_concept_id": "string",
+      "relation_type": "apoya|matiza|extiende|requiere|causa|ejemplifica|generaliza|contrasta",
+      "description": "string (por qué es defendible, nombrando ambos conceptos)",
+      "confidence_extraction": 0.45
+    }}
   ]
 }}"""

@@ -446,6 +446,8 @@ async def run_pipeline(
                 target["is_enriched"] = True
                 enriched_count += 1
 
+    # v3.15 · atributos solo con cita: lo que el modelo añadió de su cosecha no entra al juego
+    stats.update(verificador.verificar_subdimensiones(concepts))
     status.time("layer1b_enrichment", time.monotonic() - t0)
     stats["concepts_enriched"] = enriched_count
     stats["concepts_eligible_for_enrichment"] = len(to_enrich)
@@ -528,7 +530,9 @@ async def run_pipeline(
         payload_r, err_r = await caller.json(
             layer2_relations.SYSTEM_PROMPT,
             layer2_relations.USER_PROMPT_TEMPLATE.format(
-                text=sections.combine(seg_rel[: max(1, len(seg_rel) // 2)], with_headers=False) + pista,
+                # v3.15 · se lee donde los huérfanos APARECEN (en todo el cuerpo, no en la
+                # primera mitad de lo seleccionado): su vínculo está en su propio párrafo
+                text=sections.combine(_segmentos_que_mencionan(body, huerfanos, BUDGETS["relations"]) or seg_rel, with_headers=False) + pista,
                 concepts_json=concepts_json,
             ),
             "capa2_completar",
@@ -562,6 +566,61 @@ async def run_pipeline(
     clusters = graph_utils.compute_clusters([c["id"] for c in concepts], relations,
                                             titulos={c["id"]: (c.get("title") or c["id"]) for c in concepts})
     stats["clusters"] = len(clusters)
+
+    # ── v3.15 · Insinuadas: pares que el texto trata juntos sin afirmar nada ──
+    # Pocas y marcadas: confianza ≤ 0.55, anclaje «inferida». Los clusters ya se calcularon
+    # arriba solo con lo que el texto sostiene, así que las insinuadas no mueven las zonas.
+    t_ins = time.monotonic()
+    max_ins = max(0, min(_env_int("MAX_INSINUADAS", 8), max(3, len(concepts) // 3)))
+    ya = {frozenset((r.get("from_concept_id"), r.get("to_concept_id"))) for r in relations}
+    ya |= {frozenset((nv["a"], nv["b"])) for nv in no_vinculos}
+    candidatos = []
+    for co in sorted(cooccurrences, key=lambda x: -int(x.get("parrafos_compartidos") or 0)):
+        par = [x for x in (co.get("concept_ids") or []) if x in valid_ids]
+        if len(par) == 2 and frozenset(par) not in ya:
+            candidatos.append((par[0], par[1], int(co.get("parrafos_compartidos") or 0)))
+    insinuadas_ok = 0
+    if max_ins and candidatos:
+        payload_i, err_i = await caller.json(
+            layer2_relations.SYSTEM_PROMPT_INSINUADAS.format(maximo=max_ins),
+            layer2_relations.USER_PROMPT_INSINUADAS.format(
+                text=sections.combine(seg_rel, with_headers=False),
+                pares="\n".join(f"{a} | {b} | {n}" for a, b, n in candidatos[: max_ins * 3]),
+                concepts_json=concepts_json,
+            ),
+            "capa2_insinuadas",
+        )
+        await caller.spaced()
+        permitidos = {frozenset((a, b)) for a, b, _ in candidatos[: max_ins * 3]}
+        nuevas = []
+        for r in ((payload_i or {}).get("relations") or []):
+            if not isinstance(r, dict):
+                continue
+            a, b = r.get("from_concept_id"), r.get("to_concept_id")
+            if frozenset((a, b)) not in permitidos or a == b:
+                continue
+            permitidos.discard(frozenset((a, b)))          # una por par
+            try:
+                conf = float(r.get("confidence_extraction") or 0.45)
+            except (TypeError, ValueError):
+                conf = 0.45
+            nuevas.append({
+                "from_concept_id": a, "to_concept_id": b,
+                "relation_type": (r.get("relation_type") or "apoya").strip().lower(),
+                "description": r.get("description") or "",
+                "confidence_extraction": round(max(0.35, min(0.55, conf)), 2),
+                "anclaje_textual": "inferida", "evidencia_textual": "",
+                "origen": "insinuada_coocurrencia",
+            })
+            if len(nuevas) >= max_ins:
+                break
+        if nuevas and not err_i:
+            antes_i = len(relations)
+            relations, _ = graph_utils.dedupe_relations(relations + nuevas, valid_ids)
+            insinuadas_ok = len(relations) - antes_i
+    stats["insinuadas_por_coocurrencia"] = insinuadas_ok
+    stats["relations"] = len(relations)
+    status.time("layer2_insinuadas", time.monotonic() - t_ins)
 
     # ── Paso 3.5: Ejes de atributos ────────────────────────────────────────
     t0 = time.monotonic()
@@ -982,6 +1041,32 @@ async def run_pipeline(
         "scenarios": scenarios,
     }
     return _finalize(raw_output, course_id, filename, stats, status, truncated_any, t_start)
+
+
+def _segmentos_que_mencionan(body: list, conceptos: list[dict], presupuesto: int) -> list:
+    """v3.15 · los segmentos del cuerpo donde aparece alguno de esos conceptos (por título,
+    título sin paréntesis o sigla), en orden de documento y hasta el presupuesto."""
+    import re as _re
+    formas: set[str] = set()
+    for c in conceptos:
+        titulo = (c.get("title") or "").strip()
+        base = _re.sub(r"\s*\([^)]*\)\s*$", "", titulo).strip()
+        sigla = _re.search(r"\(([^)]{2,10})\)\s*$", titulo)
+        for f in (titulo, base, sigla.group(1) if sigla else ""):
+            f = grounding.normalizar(f)
+            if len(f) >= 3:
+                formas.add(f)
+    elegidos, usado = [], 0
+    for seg in body:
+        texto = grounding.normalizar(getattr(seg, "text", ""))
+        if not any((f" {f} " in f" {texto} ") for f in formas):
+            continue
+        tam = getattr(seg, "char_count", len(getattr(seg, "text", "")))
+        if elegidos and usado + tam > presupuesto:
+            break
+        elegidos.append(seg)
+        usado += tam
+    return elegidos
 
 
 def _dedupe_by_id(items: list[dict]) -> list[dict]:

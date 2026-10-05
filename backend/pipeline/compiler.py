@@ -1265,6 +1265,8 @@ def compile_bundle(data: dict, permitir_juez: bool = True,
             # entra al Atlas como evidencia.
             "confianza": conf,
             "anclaje": anclaje,
+            # v3.15 · la frase literal que la sostiene (vacía en las inferidas)
+            "evidencia": r.get("evidencia_textual") or "",
             "veces": int(r.get("veces_afirmada") or 1),
             # la revisión del profesor viaja con la arista: `rechazado` no
             # entra a la mesa; `borrador` entra (es lo que hay hasta revisar)

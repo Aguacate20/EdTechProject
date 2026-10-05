@@ -283,17 +283,62 @@ class Verificador:
         debería pesar igual que una afirmada.
         """
         for r in relations or []:
-            cita = (r.get("evidencia_textual") or r.get("description") or "").strip()
+            # v3.15 · se verifica la CITA literal que el modelo debe copiar; la descripción es
+            # una paráfrasis y casi nunca coincide con el texto (por eso todo salía «inferida»).
+            cita = (r.get("evidence_quote") or r.get("evidencia_textual") or "").strip()
             encontrada, sim = (
                 cita_presente(cita, self.fuente_norm, self.fuente_ngramas)
                 if cita else (False, 0.0)
             )
+            if not encontrada:
+                desc = (r.get("description") or "").strip()
+                encontrada, sim = (
+                    cita_presente(desc, self.fuente_norm, self.fuente_ngramas)
+                    if desc else (False, 0.0)
+                )
+                cita = desc if encontrada else ""
             r["anclaje_textual"] = "verificado" if encontrada else "inferida"
+            r["evidencia_textual"] = cita if encontrada else ""
             if not encontrada:
                 r["confidence_extraction"] = min(
                     float(r.get("confidence_extraction") or 0.6), 0.7
                 )
         return relations
+
+    # ── Atributos (subdimensiones) ────────────────────────────────────────
+    def verificar_subdimensiones(self, concepts: list[dict]) -> dict:
+        """v3.15 · un atributo solo se conserva si trae una cita literal que está en el texto.
+
+        El juego le dice al estudiante «el texto desglosa este concepto en estas partes»; si
+        el atributo salió del conocimiento general del modelo, eso es falso y se evalúa algo
+        que el estudiante no leyó. Los que no pasan se guardan aparte, para la revisión.
+        """
+        conservadas = descartadas = 0
+        for c in concepts or []:
+            buenas, fuera = [], []
+            vistos: set[str] = set()
+            for s in c.get("subdimensions") or []:
+                if not isinstance(s, dict):
+                    continue
+                nombre = (s.get("name") or "").strip()
+                cita = (s.get("evidence_quote") or s.get("evidencia_textual") or "").strip()
+                ok, _ = cita_presente(cita, self.fuente_norm, self.fuente_ngramas) if cita else (False, 0.0)
+                clave = normalizar(nombre)
+                if ok and nombre and clave not in vistos:
+                    vistos.add(clave)
+                    buenas.append({"name": nombre, "description": s.get("description") or "",
+                                   "evidencia_textual": cita})
+                else:
+                    fuera.append({"name": nombre, "description": s.get("description") or ""})
+            if c.get("subdimensions") is not None:
+                c["subdimensions"] = buenas
+                if fuera:
+                    c["subdimensions_sin_cita"] = fuera
+            conservadas += len(buenas)
+            descartadas += len(fuera)
+        self.stats["atributos_verificados"] = conservadas
+        self.stats["atributos_sin_cita_descartados"] = descartadas
+        return {"atributos_verificados": conservadas, "atributos_sin_cita_descartados": descartadas}
 
     def informe(self) -> dict:
         return {
