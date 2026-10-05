@@ -287,6 +287,11 @@ def _handle_status_error(entry: dict, e: httpx.HTTPStatusError) -> None:
         # v3.14 · el proveedor retiró el modelo: fuera del pool por el resto de la sesión
         pool.desactivar(entry["key"], "404 del proveedor (modelo retirado)")
         raise LLMRetryable(f"Modelo retirado por el proveedor: {entry['key']}") from e
+    if status in (401, 402, 403):
+        # v3.17 · sin saldo, llave inválida o acceso denegado: esa cuenta no va a
+        # responder en esta sesión. Fuera del pool y se sigue con los demás modelos.
+        pool.desactivar(entry["key"], f"{status} del proveedor (sin saldo o sin acceso)")
+        raise LLMRetryable(f"{status} en {entry['key']}: cuenta sin saldo o sin acceso") from e
     if status == 400:
         body = e.response.text or ""
         # Rechazo por ventana de contexto. El proveedor informa su límite real
