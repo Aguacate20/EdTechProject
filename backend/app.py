@@ -392,6 +392,92 @@ def _plan_del_estudiante(student_id: str, forzar: bool = False) -> dict | None:
     return bundle
 
 
+# ── v3.26 · experimento: ¿qué variante gratuita de OpenRouter es usable? ─────
+_EXPERIMENTO: dict[str, Any] = {"estado": "sin_iniciar", "resultados": []}
+
+_EXP_TEXTO = (
+    "La teoría de la carga cognitiva sostiene que la memoria de trabajo tiene una capacidad "
+    "limitada, de modo que el diseño instruccional debe reducir la carga extrínseca para liberar "
+    "recursos destinados a la carga germana. El andamiaje, concepto derivado de la zona de "
+    "desarrollo próximo de Vygotsky, consiste en un apoyo temporal que se retira a medida que el "
+    "aprendiz gana autonomía. La práctica de recuperación, por su parte, mejora la retención a "
+    "largo plazo más que la relectura, un hallazgo conocido como efecto de la evaluación. Cuando "
+    "la recuperación se distribuye en el tiempo, el efecto de espaciamiento potencia aún más la "
+    "consolidación. La metacognición permite al estudiante supervisar su propia comprensión y "
+    "calibrar su confianza, lo que a su vez orienta la autorregulación del aprendizaje. "
+) * 3
+
+_EXP_VARIANTES = [
+    ("1 · gemma-4-31b", "google/gemma-4-31b-it:free", None),
+    ("2 · nemotron-super sin razonar", "nvidia/nemotron-3-super-120b-a12b:free", {"enabled": False}),
+    ("3 · nemotron-nano (razona)", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", None),
+    ("4 · nemotron-nano sin razonar", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", {"enabled": False}),
+]
+
+
+async def _exp_una(nombre: str, modelo: str, razonamiento: dict | None) -> dict:
+    import os
+    import time
+    import httpx
+    cuerpo: dict[str, Any] = {
+        "model": modelo, "max_tokens": 4000, "temperature": 0.1,
+        "messages": [
+            {"role": "system", "content": "Extraes conceptos de textos académicos. Respondes SOLO con JSON válido."},
+            {"role": "user", "content": (
+                "Extrae entre 6 y 10 conceptos del texto. Formato: {\"concepts\": [{\"title\": str, "
+                "\"definition\": str, \"evidence_quote\": cita literal del texto}]}\n\nTEXTO:\n" + _EXP_TEXTO)},
+        ],
+    }
+    if razonamiento is not None:
+        cuerpo["reasoning"] = razonamiento
+    r: dict[str, Any] = {"variante": nombre, "modelo": modelo}
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=400) as cli:
+            resp = await cli.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {os.environ.get('OPENROUTER_API_KEY', '')}"},
+                json=cuerpo)
+        r["http"] = resp.status_code
+        datos = resp.json() if resp.content else {}
+        eleccion = (datos.get("choices") or [{}])[0]
+        texto = (eleccion.get("message") or {}).get("content") or ""
+        uso = datos.get("usage") or {}
+        r.update({
+            "finish": eleccion.get("finish_reason"),
+            "tokens_salida": uso.get("completion_tokens"),
+            "tokens_razonamiento": (uso.get("completion_tokens_details") or {}).get("reasoning_tokens"),
+            "caracteres": len(texto),
+            "conceptos": texto.count('"title"'),
+            "inicio": texto[:160],
+            "error": str(datos.get("error") or eleccion.get("error") or "")[:300] or None,
+        })
+    except Exception as e:  # noqa: BLE001
+        r["error"] = f"{type(e).__name__}: {e}"[:300]
+    r["segundos"] = round(time.monotonic() - t0, 1)
+    logger.info("[experimento] %s", r)
+    return r
+
+
+async def _exp_correr() -> None:
+    _EXPERIMENTO.update({"estado": "corriendo", "resultados": []})
+    # de a una: en paralelo se estorbarían entre sí en la cola gratuita
+    for nombre, modelo, raz in _EXP_VARIANTES:
+        _EXPERIMENTO["resultados"].append(await _exp_una(nombre, modelo, raz))
+    _EXPERIMENTO["estado"] = "terminado"
+
+
+@app.get("/experimento/openrouter")
+async def experimento_openrouter(repetir: bool = False):
+    """Lanza (una vez) la misma extracción corta contra cuatro variantes gratuitas de
+    OpenRouter y devuelve tiempos y calidad. Recargar la página muestra el avance.
+    Gasta 4 de las 50 peticiones diarias. `?repetir=true` lo corre de nuevo."""
+    if _EXPERIMENTO["estado"] == "sin_iniciar" or (repetir and _EXPERIMENTO["estado"] == "terminado"):
+        _EXPERIMENTO["estado"] = "corriendo"
+        asyncio.create_task(_exp_correr())
+    return _EXPERIMENTO
+
+
 @app.get("/salud")
 async def salud():
     """v3.14 · estado del pool de modelos: activos y retirados (con motivo)."""
