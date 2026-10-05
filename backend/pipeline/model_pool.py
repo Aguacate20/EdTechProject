@@ -76,31 +76,22 @@ DEFAULT_POOL: list[dict] = [
      "latency_penalty_s": 3.0, "espera_429_s": 15.0},
 
     # ── v3.23 · OpenRouter gratis: 50 peticiones al día (unos dos PDF). Respaldo.
-    {"key": "openrouter:gpt-oss-120b", "provider": "openrouter", "model": "openai/gpt-oss-120b:free",
+    # v3.24 · los gratuitos grandes que la cuenta lista hoy (no hay gpt-oss ni llama).
+    {"key": "openrouter:nemotron-ultra", "provider": "openrouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
      "tier": "alta", "rpm": 15, "tpm": 200_000, "rpd": 50, "tpd": 5_000_000,
      "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",
      "latency_penalty_s": 8.0, "espera_429_s": 30.0},
-    {"key": "openrouter:llama-3.3-70b", "provider": "openrouter", "model": "meta-llama/llama-3.3-70b-instruct:free",
+    {"key": "openrouter:nemotron-super", "provider": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free",
      "tier": "alta", "rpm": 15, "tpm": 200_000, "rpd": 50, "tpd": 5_000_000,
      "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",
      "latency_penalty_s": 9.0, "espera_429_s": 30.0},
+    {"key": "openrouter:gemma-4-31b", "provider": "openrouter", "model": "google/gemma-4-31b-it:free",
+     "tier": "alta", "rpm": 15, "tpm": 200_000, "rpd": 50, "tpd": 5_000_000,
+     "max_output": 8000, "context_limit": 120_000, "token_param": "max_tokens",
+     "latency_penalty_s": 10.0, "espera_429_s": 30.0},
 
-    # ── v3.19 · Mistral: plan gratuito sin tarjeta, ventana amplia. Es quien
-    # atiende las capas grandes desde que Cerebras cerró su plan gratuito.
-    # Los límites son prudentes: si el proveedor responde 429, el pool se ajusta solo.
-    # v3.21 · límites reales de la cuenta (panel de Mistral): large 250K TPM,
-    # medium y small 20K TPM, todos a 1 petición por segundo. `mistral-large-2512`
-    # no sale en /models pero sí tiene cupo, así que no pasa por la verificación
-    # de arranque; si de verdad no existe, el primer 404 lo retira.
-    # v3.22 · mistral-large fuera: el plan gratuito responde 403.
-    {"key": "mistral:medium", "provider": "mistral", "model": "mistral-medium-latest",
-     "tier": "alta", "rpm": 30, "tpm": 20_000, "tpd": 5_000_000,
-     "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens",
-     "latency_penalty_s": 5.0, "espera_429_s": 20.0},
-    {"key": "mistral:small", "provider": "mistral", "model": "mistral-small-latest",
-     "tier": "alta", "rpm": 30, "tpm": 20_000, "tpd": 5_000_000,
-     "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens",
-     "latency_penalty_s": 10.0, "espera_429_s": 20.0},
+    # v3.24 · Mistral fuera: medium y small respondieron 429 a todas las llamadas
+    # durante una tarde entera pese a tener cupo en el panel; solo añadían espera.
 
     # ── Google: lento pero de ventana enorme y cupo aparte. Red de seguridad.
     #
