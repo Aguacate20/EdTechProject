@@ -69,18 +69,22 @@ DEFAULT_POOL: list[dict] = [
     # ── v3.19 · Mistral: plan gratuito sin tarjeta, ventana amplia. Es quien
     # atiende las capas grandes desde que Cerebras cerró su plan gratuito.
     # Los límites son prudentes: si el proveedor responde 429, el pool se ajusta solo.
-    {"key": "mistral:large", "provider": "mistral", "model": "mistral-large-latest",
-     "tier": "alta", "rpm": 20, "tpm": 200_000, "tpd": 5_000_000,
-     "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens"},
+    # v3.21 · límites reales de la cuenta (panel de Mistral): large 250K TPM,
+    # medium y small 20K TPM, todos a 1 petición por segundo. `mistral-large-2512`
+    # no sale en /models pero sí tiene cupo, así que no pasa por la verificación
+    # de arranque; si de verdad no existe, el primer 404 lo retira.
+    {"key": "mistral:large", "provider": "mistral", "model": "mistral-large-2512",
+     "tier": "alta", "rpm": 30, "tpm": 250_000, "tpd": 20_000_000,
+     "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens",
+     "sin_verificar": True, "espera_429_s": 5.0},
     {"key": "mistral:medium", "provider": "mistral", "model": "mistral-medium-latest",
-     "tier": "alta", "rpm": 20, "tpm": 200_000, "tpd": 5_000_000,
+     "tier": "alta", "rpm": 30, "tpm": 20_000, "tpd": 5_000_000,
      "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens",
-     "latency_penalty_s": 5.0},
-
+     "latency_penalty_s": 5.0, "espera_429_s": 20.0},
     {"key": "mistral:small", "provider": "mistral", "model": "mistral-small-latest",
-     "tier": "alta", "rpm": 20, "tpm": 200_000, "tpd": 5_000_000,
+     "tier": "alta", "rpm": 30, "tpm": 20_000, "tpd": 5_000_000,
      "max_output": 8000, "context_limit": 128_000, "token_param": "max_tokens",
-     "latency_penalty_s": 10.0},
+     "latency_penalty_s": 10.0, "espera_429_s": 20.0},
 
     # ── Google: lento pero de ventana enorme y cupo aparte. Red de seguridad.
     #
@@ -198,6 +202,8 @@ class ModelPool:
                     logger.info("[pool] mistral ofrece: %s", sorted(
                         i for i in ids if any(t in i for t in ("large", "medium", "small"))))
                 for e in mios:
+                    if e.get("sin_verificar"):
+                        continue
                     modelo = str(e.get("model", "")).split("/")[-1]
                     if ids and modelo not in ids and not any(modelo in x or x in modelo for x in ids):
                         self.desactivar(e["key"], f"el proveedor ya no lo lista ({modelo})")
