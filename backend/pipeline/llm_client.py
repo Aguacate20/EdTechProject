@@ -229,6 +229,12 @@ async def _call_openai_compatible(
 
     choice = (data.get("choices") or [{}])[0]
     text = (choice.get("message") or {}).get("content") or ""
+    if not text.strip():
+        # v3.25 · un 200 sin contenido (OpenRouter lo usa para errores del modelo
+        # de fondo) no es una respuesta: se aparta el modelo y se prueba otro.
+        get_pool().penalize(entry["key"], 60)
+        detalle = str(data.get("error") or choice.get("error") or "")[:200]
+        raise LLMRetryable(f"Respuesta vacía de {entry['key']} {detalle}".strip())
     return (text, choice.get("finish_reason") or "stop",
             data.get("usage") or {}, dict(response.headers))
 
